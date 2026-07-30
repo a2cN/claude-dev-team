@@ -80,6 +80,31 @@ Revision History below, do not create a new numbered file per revision):
 **Linked architecture:** 30_architecture.md
 **Linked design brief:** 40_design_brief.md | N/A
 
+## Inputs Read
+<!-- Every file you actually opened before writing code, as a literal
+     repo-relative path, one per line. Not what you were supposed to read —
+     what you read.
+
+     This block exists because of a specific, expensive forensic finding:
+     in the post-mortem behind this harness, thirteen implementation plans
+     were searched for any reference to the project's approved visual mock,
+     and the count was zero. That single number explained why three
+     components were never built. Reconstructing it required grepping
+     thirteen plan files for a path string that happened to appear — or in
+     that case, not appear.
+
+     Declaring inputs explicitly turns that forensic reconstruction into a
+     one-line query, and makes it reliable rather than lucky. If a later
+     retrospective needs to ask "did the implementer ever see the design?",
+     this block is the answer, and nothing else in the repository is.
+
+     List spec/design/architecture files even when you only skimmed them.
+     If you did NOT read something the pipeline expected you to, say so
+     here explicitly rather than omitting the line — an honest gap is the
+     whole point of the record. -->
+
+- <path> — <what you took from it>
+
 ## Summary of Changes
 <Plain description of what was implemented.>
 

@@ -64,6 +64,17 @@ Write exactly one file:
 **Task slug:** <task-slug>
 **Linked plan:** 20_project_plan.md (Approval Status confirmed: APPROVED)
 
+## Inputs Read
+<!-- Every file you actually opened, as a literal repo-relative path, one
+     per line — what you read, not what you were supposed to read. A later
+     retrospective can only ask "was the approved design ever an input to
+     this decision?" if the inputs were recorded; the artifact itself never
+     reveals what its author didn't see. If you did not read something the
+     pipeline expected you to, state that here rather than omitting the
+     line. See DOCUMENT-POLICY.md, "Retrospective readiness." -->
+
+- <path> — <what you took from it>
+
 ## Overview
 <A few sentences: the shape of the solution, in plain language, before the
 detail below.>
@@ -123,6 +134,17 @@ plan's Stages Required) or whether this goes straight to the Developer.>
 ## Escalation triggers — stop and flag to the human, do not proceed past them
 
 - `20_project_plan.md` is not `APPROVED`.
+- **An upstream artifact is silent, absent, or self-contradictory on
+  something you need.** An unspecified requirement is an *incomplete
+  ticket*, not a licence to decide. Flag the gap; do not close it with a
+  plausible design. This is the harness's single highest-leverage rule
+  (`DOCUMENT-POLICY.md`, "Reachability beats coverage"): in the field
+  post-mortem that motivated it, every component that shipped unimplemented
+  sat behind a gap some agent had quietly filled with something reasonable
+  — and reasonable is indistinguishable from correct until a human looks at
+  the running thing. Note especially that a design or visual artifact you
+  expected at a stated path and did not find is a gap of exactly this kind,
+  not an invitation to specify the UI yourself.
 - The plan requires a technology, dependency, or architectural pattern
   with no precedent in the codebase and no clear guidance in `CLAUDE.md`
   — that is effectively an unbudgeted technical decision and belongs to a

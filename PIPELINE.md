@@ -83,6 +83,17 @@ Every artifact lives in one task workspace:
 `add-csv-export`). Pick it once, at workspace creation, and use it
 consistently — it's how every agent finds the right workspace.
 
+**The whole workspace directory is gitignored, by policy.** At completion
+its contents leave it three ways: `30_architecture.md` and
+`40_design_brief.md` are *promoted* into `docs/adr/` and `docs/design/` as
+living documents; the verification evidence goes into the PR body; and the
+whole workspace is *archived* verbatim to
+`docs/archive/<YYYY-MM-DD>-<task-slug>/`, immutable, as the record of what
+the inputs to this run were. Read `DOCUMENT-POLICY.md` before your first
+run — it explains which documents carry an obligation to stay true, which
+are deliberately frozen stale, and why a document-driven process fails when
+that line isn't drawn.
+
 Numbering leaves gaps (there is no `70` in the main line, `80` is unused)
 deliberately, matching the original design this harness is based on: it
 leaves room to insert an extra stage later (e.g. a security-review stage
@@ -102,6 +113,17 @@ not just described in this doc:
    proceed if it isn't exactly `APPROVED`.
 2. **Completion approval.** Same mechanism, on `90_completion.md`. The
    Project Manager drafts it after QA passes; only a human approves it.
+   This gate is **evidence-based, not report-based**: `90_completion.md`
+   carries an Evidence block (a screenshot of the running feature, a
+   reachable instance holding real data, an end-to-end run, verbatim
+   quality-gate output), and what the human is asked to do is *look at
+   those and at the diff* — not read the summary and agree with it. A gate
+   where a human reads a document and a document is all they get is not a
+   gate; it degrades into acknowledging a green checkmark. "Was it built
+   the way the plan said" is a conformance question the quality gates and
+   self-review already cover. The human's review is for the question no
+   machine can answer — is this the right thing — and that needs something
+   to look at. See `DOCUMENT-POLICY.md`, "Approve artifacts, not reports."
 3. **All git write operations.** No agent in this harness ever runs
    `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, or
    similar. Agents prepare a diff (by actually making the file changes),
@@ -299,20 +321,43 @@ Once QA shows PASS:
 > Use the project-manager subagent to draft the completion summary for
 > add-csv-export.
 
-Read `90_completion.md`. Look specifically at the "Prepared for the
-human" section — the suggested branch name and commit message. Actually
-review the real diff yourself (this summary is not a substitute for
-that). When satisfied, edit `Approval Status` to `APPROVED`, exactly as
-in step 3.
+Read `90_completion.md` — but **read the Evidence block first**, before the
+prose, and actually open the things it points at. Then review the real diff
+yourself. The summary is not a substitute for either. If the Evidence block
+has rows marked MISSING, that is the finding: decide whether to accept the
+gap knowingly or send it back, and don't let a confident summary stand in
+for the artifact you couldn't see.
+
+Also check the "Artifacts due for promotion and archiving" table. If rows
+are still `pending`, nothing has left the workspace yet and it will all be
+lost at merge, because the workspace isn't committed:
+
+> Use the developer subagent to promote and archive the artifacts listed in
+> 90_completion.md for add-csv-export.
+
+Do not skip the archive row on the grounds that the task went smoothly. The
+archive is the only record of *what the inputs to this run were*, and its
+value is realised at the retrospective, not now — by which point the choice
+to skip it is unrecoverable. A diff records the output; nothing records the
+input unless you keep it.
+
+When satisfied, edit `Approval Status` to `APPROVED`, exactly as in step 3.
 
 **9. Ship it — you run this, not an agent.**
 
 ```
 git checkout -b <the suggested branch name>
-git add <the files 50_implementation.md listed>
+git add <the files 50_implementation.md listed, plus the promoted files>
 git commit -m "<the suggested commit message, edited if you want>"
 git push
 ```
+
+Then open the PR and **paste `90_completion.md`'s "What was delivered",
+"Evidence", and "Outstanding follow-ups" sections into the PR
+description.** This is not ceremony: the workspace is gitignored, so the PR
+body and the commit history are the only places this evidence survives, and
+they are what lets someone verify this completion claim months from now
+without you. See `DOCUMENT-POLICY.md`.
 
 No agent in this harness will do this step for you, by design.
 

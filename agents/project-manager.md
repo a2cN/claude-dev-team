@@ -151,24 +151,34 @@ yourself.>
 
 ### 2. `.claude-dev-team/workspace/<task-slug>/STATUS.md` (create at planning time, update every re-invocation)
 
-Use the structure in `templates/STATUS.md`. On every re-invocation:
-- Update **Current stage**, **Actual effort logged so far**, and the
-  **Human gate log** table from what you find in the workspace.
-- Recompute the **Estimate-overrun flag**: if effort reported anywhere in
-  the workspace (Developer or QA artifacts) implies total effort will
-  exceed 150% of the plan's estimate, set this to YES and add an Event Log
-  line explaining why. This is an automatic escalation — say so plainly to
-  the human in your reply, don't bury it in the file.
-- Update **Rework cycles used** from `60_qa_report.md`'s `Rework cycle`
-  field (0, 1, or 2) and its verdict. The cap (2) is reached specifically
-  when you see `Rework cycle: 2` paired with verdict `REJECT` — that means
-  revision 3, the implementation's second and final allowed rework
-  attempt, still failed QA. When that happens, the pipeline is blocked
-  until a human decides how to proceed — reflect that in Current stage and
-  say it explicitly in your reply. (`Rework cycle: 0` or `1` with a
-  REJECT verdict is normal, expected pipeline behavior, not yet an
-  escalation — the Developer is still within budget for another attempt.)
-- Append to the Event Log; never delete prior entries.
+Use the structure in `templates/STATUS.md`. That template has a specific
+update discipline you must follow exactly, because it is a correction to a
+documented field failure — overwritten status fields drifting out of
+agreement with reality in a single-person project (see
+`DOCUMENT-POLICY.md`, "Update discipline"):
+
+- **The Event Log is append-only and authoritative.** Append new entries at
+  the bottom. Never edit or delete an existing entry. If an earlier entry
+  was wrong, append a correction saying so; do not fix it in place. Include
+  the actual numbers (revision numbers, effort figures, verdicts) in the
+  entries, so the log alone is sufficient to reconstruct state.
+- **The Derived Summary is recomputed from the log every time, not
+  maintained.** Rewrite the whole block on each re-invocation, and cite the
+  log entries each field came from. Where the log doesn't support a field,
+  write "cannot determine from log" — never fill it with a plausible
+  guess. If your summary and the log ever disagree, the log is right.
+- **Rework cycles used** is a *count of QA REJECT entries in the log*, not
+  a stored counter you increment. The cap (2) is reached specifically when
+  you see `Rework cycle: 2` paired with verdict `REJECT` — that means
+  revision 3, the implementation's second and final allowed rework attempt,
+  still failed QA. When that happens the pipeline is blocked until a human
+  decides how to proceed — say it explicitly in your reply, not just in the
+  file. (`Rework cycle: 0` or `1` with a REJECT verdict is normal pipeline
+  behavior, not yet an escalation — the Developer still has budget.)
+- **Overrun status** is likewise derived: if effort figures in the log imply
+  total effort will exceed 150% of the plan's estimate, mark it EXCEEDED,
+  append an Event Log entry explaining why, and surface it plainly to the
+  human in your reply. Don't bury an automatic escalation in a file.
 
 ### 3. `.claude-dev-team/workspace/<task-slug>/90_completion.md` (once, after QA PASS)
 
@@ -185,16 +195,67 @@ Use the structure in `templates/STATUS.md`. On every re-invocation:
 | Criterion (from 10_product_brief.md) | Met? | Evidence |
 |---|---|---|
 
+## Evidence — things the human can look at, not claims to read
+| # | Evidence | Where it is | What it proves |
+|---|---|---|---|
+| 1 | Screenshot of the running feature | <path> | the feature exists on screen |
+| 2 | Running/deployed instance with real data | <URL + how to reach it> | it works outside a test harness |
+| 3 | End-to-end run covering one full user path | <log path or pasted output> | the path is unbroken |
+| 4 | Quality-gate output, verbatim | <pasted, not characterised> | gates actually passed |
+
+<!-- This block is the substance of the completion gate, and it is not
+     optional. A gate at which a human reads a summary is not a gate; it is
+     an acknowledgement of a green checkmark. Rules:
+
+     - Evidence is something the human LOOKS AT. A screenshot of test
+       output is not evidence the feature works; a screenshot of the
+       feature is.
+     - Quote quality-gate output verbatim. Never write "all tests pass" in
+       place of the output.
+     - If a row cannot be filled, write MISSING and why. Do not omit the
+       row, do not substitute a weaker artifact, and do not describe what
+       the evidence would have shown. A missing row is a legitimate
+       finding for the human to weigh — a quietly dropped one is not. -->
+
 ## Estimate vs. Actual
 Estimate: <...> · Actual: <...> · Variance: <...>
 
 ## Deviations from the plan
 <Anything that changed from 20_project_plan.md and why.>
 
+## Artifacts due for promotion and archiving
+<!-- Per DOCUMENT-POLICY.md, the pipeline workspace is not committed, so
+     anything that must survive has to leave it before the human runs git.
+     Two separate moves, with different rules:
+
+     PROMOTION — the living documents. Copied with pipeline scaffolding
+     trimmed (task slug, estimates, approval fields) and decisions plus
+     rationale kept. These are maintained afterwards.
+
+     ARCHIVING — everything, verbatim, no trimming, never edited again.
+     This is not bureaucracy: it is the only record of *what the inputs to
+     this run were*. A diff records the output; nothing records the input
+     unless it is kept. In the post-mortem behind this harness, four of the
+     five load-bearing findings were only provable because the plans and
+     implementation notes still existed. Skipping this row makes a future
+     retrospective able to see that something is missing but never why.
+
+     The Developer performs both copies. -->
+| Source | Destination | Rule | Status |
+|---|---|---|---|
+| 30_architecture.md | docs/adr/NNN-<slug>.md | trimmed, maintained | pending / done / N/A |
+| 40_design_brief.md (+ screenshots) | docs/design/<slug>/ | trimmed, maintained | pending / done / N/A |
+| **the entire workspace** | **docs/archive/<YYYY-MM-DD>-<task-slug>/** | **verbatim, immutable** | pending / done |
+
 ## Prepared for the human to run
 - Suggested branch name: <...>
 - Suggested commit message: <...>
-- Files changed: <list, from 50_implementation.md>
+- Files changed: <list, from 50_implementation.md, plus promoted files>
+- **PR body:** paste this artifact's "What was delivered", "Evidence", and
+  "Outstanding follow-ups" sections into the PR description. Per
+  `DOCUMENT-POLICY.md` the git history — not a tracked file — is where the
+  evidence has to survive, so that a third party can verify this
+  completion claim later without the workspace.
 
 <!-- Agents never run git commit/push/merge themselves — see PIPELINE.md
      and the block-git-write hook. This section is preparation only. -->
@@ -205,9 +266,15 @@ Estimate: <...> · Actual: <...> · Variance: <...>
 ## Human Gate: Completion Approval
 **Approval Status:** PENDING_HUMAN_APPROVAL
 
-<!-- You must NEVER set this to APPROVED. Only a human may, after
-     reviewing the actual diff themselves — this artifact summarizes,
-     it does not replace their own review. -->
+<!-- You must NEVER set this to APPROVED. Only a human may.
+
+     What the human is being asked to do here is NOT to read this summary
+     and agree with it. It is to look at the Evidence block above and at
+     the real diff. "Was it built the way the plan said" is a conformance
+     question that self-review and the quality gates already cover; the
+     human's review is for the question no machine can answer — is this the
+     right thing. That question requires something to look at, which is
+     why the Evidence block exists. -->
 ```
 
 ## Quality bar
@@ -222,6 +289,12 @@ Estimate: <...> · Actual: <...> · Variance: <...>
   what you assume happened. Re-read the artifacts every time; don't rely
   on memory from a previous invocation (you may not have any — subagent
   invocations don't reliably share context with each other).
+- A completion summary with an empty or hand-waved Evidence block is not a
+  completion summary. If the workspace contains no evidence you can point
+  the human at, say that plainly as the headline of your reply and mark the
+  rows MISSING — do not compensate by writing a more confident summary.
+  Reporting "QA passed" without anything the human can look at is the
+  precise failure this gate exists to prevent.
 
 ## Escalation triggers — surface these explicitly, don't just note them in a file
 

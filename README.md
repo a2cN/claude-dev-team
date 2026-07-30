@@ -103,6 +103,31 @@ becomes optional rather than necessary.
    cp templates/00_request.md templates/STATUS.md /path/to/your-project/.claude-dev-team/templates/
    ```
 
+6. Set up the document policy — **read `DOCUMENT-POLICY.md` first**, it
+   explains why each of these matters. Concretely:
+
+   ```gitignore
+   # in the project's .gitignore
+   .claude-dev-team/workspace/
+   ```
+
+   ```bash
+   mkdir -p /path/to/your-project/docs/adr /path/to/your-project/docs/design
+   cp DOCUMENT-POLICY.md PIPELINE.md /path/to/your-project/.claude-dev-team/
+   ```
+
+   Copy the two docs in, don't just cite them: an agent running inside the
+   consuming project cannot reach a path in *this* repo, and by this
+   policy's own rule an unreachable document does not exist. `.gitignore`
+   only excludes `workspace/`, so these stay committed.
+
+   The pipeline workspace is transient by policy and is not committed. The
+   two artifacts that must survive a merge — `30_architecture.md` and
+   `40_design_brief.md` — are promoted into `docs/adr/` and `docs/design/`
+   at completion, and verification evidence goes into the PR body. Skipping
+   this step doesn't break the pipeline; it just silently discards every
+   architectural decision and design artifact the moment you merge.
+
 That's it. No build step, no dependency install — these are just markdown
 files Claude Code reads at session start (restart your Claude Code session
 after step 1 if `.claude/agents/` didn't already exist in that project, so
@@ -135,6 +160,15 @@ it should define:
   existing patterns instead of inventing parallel ones.
 - **Design system / component library** (if the project has a UI): so the
   Designer extends it rather than inventing a new one.
+- **Promoted-artifact paths, named as paths**: `docs/adr/` and
+  `docs/design/`, spelled out literally. "See our design docs" is not
+  reachable; a path is. Also state that visual artifacts outrank prose when
+  the two disagree, and the rule that an unspecified requirement is an
+  incomplete ticket rather than a licence to decide. See
+  `DOCUMENT-POLICY.md`, "Reachability beats coverage."
+- **The project's ubiquitous language**: one fixed spelling per domain
+  concept, used in identifiers and comments alike. Agentic search is only
+  as good as the vocabulary's consistency.
 - **Anything already off-limits**: existing security/permission rules,
   no-prod-deploy policies, modules that need special care. This harness
   is built to layer on top of whatever guardrails already exist, not

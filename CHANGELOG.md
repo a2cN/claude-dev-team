@@ -1,5 +1,219 @@
 # Design Notes / Changelog
 
+## v1.1.1 — retrospective readiness (fixes a real defect in v1.1.0)
+
+v1.1.0's document policy was a **two-way** split: keep it or bin it. A
+reviewer asked the obvious question — could an AI-run retrospective, of the
+kind that motivated this whole harness, be reconstructed from the living
+documents plus the PR bodies alone? The answer was **no**, and the proof is
+the source post-mortem's own reproduction steps. Four of its five
+load-bearing findings needed files v1.1.0 threw away:
+
+| Finding | File it needed | v1.1.0 fate |
+|---|---|---|
+| Thirteen implementation plans referenced the approved mock **zero times** — the finding that explained three unbuilt components | the plans | discarded |
+| The implementer had itself written "visual confirmation in a browser is required" while no such step existed | the implementation notes | discarded |
+| Acceptance criteria for the relevant unit omitted the missing component | the plan | discarded |
+| The state file said "all units complete" when that was collectively false | the status file | discarded |
+
+Stated as the principle now in `DOCUMENT-POLICY.md`:
+
+> **A diff records the output. Nothing records the input unless you keep
+> it.** And the post-mortem's central finding was *"what is not in the input
+> is not in the output."* Discard the inputs and you discard the route to
+> that finding — you can see only that something is missing, never why.
+
+### Three fates, not two
+
+The error was treating "not maintained" as equivalent to "not kept." The
+write-up's objection to version-controlling a plan is about **maintenance
+cost** — every code change obliging a second edit — and that only applies to
+a document with a standing obligation to be *currently* true. **An immutable
+archive has no maintenance cost, because updating it is forbidden.** "What we
+believed on 2026-07-17" is exactly what a retrospective needs, and it being
+stale is the point rather than the problem.
+
+So: **living** (must stay true → `docs/adr/`, `docs/design/`), **archive**
+(immutable snapshot, updating forbidden → `docs/archive/<date>-<slug>/`), and
+**evidence** (PR body). Nothing is deleted; what varies is the obligation
+attached to it. At completion the whole workspace is copied verbatim to the
+archive, in addition to the two promotions.
+
+The hazard the write-up warns about — a stale plan still reading as
+authoritative — is handled by **location and label**, not deletion:
+`docs/archive/` is deliberately **on** the retrospective reading path and
+**off** every implementation reading path. That asymmetry is what makes
+keeping stale documents safe, and it resolves both failure modes at once: the
+write-up's (stale doc read as current) and the post-mortem's (approved
+artifact never read at all).
+
+### Declared inputs — the one place this harness improves on its source
+
+The post-mortem could only establish "the plans never referenced the mock" by
+grepping thirteen files for a path string that happened not to appear. That
+worked by luck; a plan could have cited the mock in prose without the path,
+or the path without reading it.
+
+`agents/solution-architect.md`, `agents/developer.md`, and
+`agents/quality-assurance.md` now each write an **`## Inputs Read`** block
+listing, as literal repo-relative paths, the files they *actually opened* —
+not the files they were told to open, and explicitly flagging anything they
+were expected to read and didn't. QA's block doubles as a cross-check on the
+Developer's: a Developer that never opened a design artifact the task
+depended on is a finding QA must report whether or not the code works.
+
+The most expensive query in the post-mortem becomes:
+
+```bash
+grep -rn "docs/design/" docs/archive/*/50_implementation.md
+```
+
+An artifact never reveals what its author didn't see. This is the only
+mechanism in the harness that recovers that.
+
+Also updated: `agents/project-manager.md` (`90_completion.md`'s promotion
+table gained an archive row, with the reason stated so it isn't skipped on a
+smooth run), `PIPELINE.md` step 8, and the consuming-project checklist.
+
+## v1.1.0 — document policy, append-only status, evidence-based completion
+
+Driven by two outside inputs that pulled in opposite directions: a
+post-mortem of a 13-unit AI-assisted build that shipped with three
+components never implemented, and a practitioner write-up arguing that
+implementation plans should not be version-controlled at all. Both were
+right about different documents; `DOCUMENT-POLICY.md` is the new file that
+resolves them. Summary of what changed and why:
+
+### `DOCUMENT-POLICY.md` (new) — which documents are committed, and which are thrown away
+
+v1.0.0 was silent on this, which in practice means "commit everything" —
+and a document-driven process that commits everything degrades into a
+document-maintenance process. The policy classifies each artifact by
+**whether its value survives the merge**, not by how important it feels:
+
+- **Transient** (`00`, `10`, `20`, `50`, `STATUS.md`): not committed. After
+  the merge the diff is the authoritative record, and a plan describing an
+  earlier intention is a liability, because it still reads as
+  authoritative.
+- **Durable** (`30_architecture.md`, `40_design_brief.md`): committed —
+  *why not the alternative* is never derivable from code. Promoted out of
+  the workspace into `docs/adr/` and `docs/design/`.
+- **Evidence** (`60`, `90`): into the PR body. Git history is append-only
+  by construction, which is exactly the substrate this needs, and it avoids
+  creating one more tracked file someone has to keep true.
+
+The consuming project gitignores the *whole* workspace rather than
+excluding files inside a tracked directory. That inversion is the point:
+nothing persists by default, and the two artifacts that must persist leave
+by an explicit act. The reverse arrangement makes persistence the accident
+and forgetting the default.
+
+Also documented there: reachability over coverage (the post-mortem's
+approved mock was 2,323 lines and 66 screenshots, and was on zero of 13
+reading lists — coverage was total, reachability was nil); the rule that an
+unspecified requirement is an incomplete ticket rather than a licence to
+decide; pushing spec into DocComments so it is on a reading path by
+construction; ubiquitous language as the load-bearing input to agentic
+search; and preferring a mechanism to a prose rule wherever one exists.
+
+### `templates/STATUS.md` — rewritten append-only, with derived summaries
+
+This is the change with the strongest evidence behind it. In the
+post-mortem, the file updated by *appending* stayed trustworthy for three
+months; the files updated by *overwriting* rows and checkboxes went wrong
+silently — in a single-person project with zero concurrent writers. "All 13
+units complete" was written truthfully field by field and was collectively
+false.
+
+v1.0.0's `STATUS.md` had exactly that shape: mutable summary fields at the
+top ("Current stage", "Rework cycles used: 0 / 2", a human-gate table whose
+rows were rewritten in place) that only the Project Manager overwrote. An
+overwrite destroys the prior value, so a wrong write leaves no trace and is
+indistinguishable from a right one.
+
+Now: the Event Log is append-only and authoritative, nobody edits an
+existing entry (corrections are appended), and every summary field is
+recomputed from the log with a citation of the entries it came from. Rework
+cycles are *counted from* the log rather than stored as an incremented
+counter. `agents/project-manager.md` was updated to match.
+
+The generalisable form: **designing for an AI that keeps documents
+correctly updated does not scale; moving toward state that is correct
+without being updated is the only thing that does.**
+
+### Completion gate is now evidence-based, not report-based
+
+v1.0.0 had two human gates and both of them read a document. That is the
+same structure the post-mortem identified as its approval failure: all its
+gates were plan-approval gates, none was an artifact-verification gate, so
+when a PR said "412 tests green, CI passing," the reviewer had no means to
+disagree and approval collapsed into acknowledging a green checkmark.
+
+`90_completion.md` now carries an Evidence block — a screenshot of the
+running feature (explicitly not of test output), a reachable instance
+holding real data, an end-to-end run, verbatim quality-gate output — and
+unfillable rows must be marked MISSING rather than omitted or substituted.
+`PIPELINE.md` step 8 now tells the human to open the evidence *before*
+reading the prose. The Project Manager's quality bar states that a
+completion summary with a hand-waved Evidence block is not a completion
+summary.
+
+The division of review labour, borrowed from the write-up: "was it built
+the way the plan said" is a conformance question, mechanisable and fit for
+self-review. Human review should be spent on the question no machine can
+answer — is this the right thing — and that question needs something to
+look at.
+
+### Promotion is now a pipeline step
+
+`90_completion.md` gained an "Artifacts due for promotion" table, and
+`PIPELINE.md` step 8 checks it. Without this, gitignoring the workspace
+would silently discard every architectural decision at merge — trading one
+failure mode for another. Promotion copies rather than moves: the workspace
+copy keeps its audit context, the promoted copy is written for a reader six
+months out who never heard of the task slug. They are different documents.
+
+### The "incomplete ticket" rule, propagated to every role that can hit a gap
+
+`agents/developer.md` already handled this well in v1.0.0 ("that's a gap in
+an upstream artifact, not something to quietly work around in code"). It is
+now also an explicit escalation trigger in
+`agents/solution-architect.md` — including the case of a design artifact
+expected at a stated path and not found, which is a gap and not an
+invitation to specify the UI yourself — and in
+`agents/quality-assurance.md`, in the form the role actually meets it:
+
+> A requirement nobody can check is silently reclassified as
+> not-a-requirement, and then it never gets built.
+
+So `60_qa_report.md` now has UNVERIFIABLE as a first-class result alongside
+PASS and FAIL, plus a dedicated Unverifiable Requirements section, and QA's
+quality bar requires the criteria set in the report to match the criteria
+set in the brief — a reader must not have to diff two files to notice
+something went missing. QA is explicitly forbidden from resolving these in
+either direction: not passing them on the assumption they're probably fine,
+not rejecting them on its own aesthetic judgment.
+
+### Still open after this revision
+
+- The Designer stage now has a durable destination (`docs/design/`), and QA
+  will now surface unverifiable visual requirements rather than swallow
+  them — but nothing in the harness *requires* a visual artifact to exist
+  before UI work begins. A project whose design direction is undecided can
+  still reach implementation with no visual correct-answer, which is a
+  strictly worse position than the post-mortem's (it at least had an
+  approved mock, merely unreachable). Currently mitigated by instruction in
+  the consuming project's `CLAUDE.md` and by detection at the QA stage,
+  which is late. The structurally correct fix is a gate before UI
+  implementation, which would mean a new pipeline stage; deferred rather
+  than rushed.
+- `70_process_review.md` is classified transient, with its lessons "filed
+  back into this harness repo's `CHANGELOG.md`" — but that filing is a
+  manual act by the human with no step in `PIPELINE.md` prompting it. The
+  cross-project learning loop is therefore the least structural part of
+  this design, which is ironic given that this whole revision came out of
+  exactly such a loop.
+
 ## v1.0.0 — initial design
 
 First build of this harness: 7 roles, file-based pipeline, human gates,
