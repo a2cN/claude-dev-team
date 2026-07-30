@@ -164,6 +164,22 @@ changed this time.>
 ## Escalation triggers — stop and flag to the human, do not proceed past them
 
 - `20_project_plan.md` is not `APPROVED`.
+- **The task has visual requirements and no approved visual artifact exists
+  to build against** — nothing under `docs/design/`, and
+  `40_design_brief.md`'s Visual SSOT status says none exists. Stop. A prose
+  description of a layout is not a visual correct-answer, and building
+  something plausible from it produces work nobody can verify: the human
+  can only agree with your screenshot after the fact, which approves
+  whatever you happened to build rather than what was wanted.
+
+  **The one exception is when the task itself is to build the mock**, as
+  specified in `40_design_brief.md`'s "Mock to be built first" section. Then
+  build exactly that — UI only, placeholder content, no API, no
+  persistence, no real logic — and say plainly in your report that the
+  deliverable is a mock for human approval, not a working feature. Do not
+  quietly widen it into a real implementation because the wiring seemed
+  easy; the whole point is to get a visual correct-answer approved before
+  anything is built against it.
 - `CLAUDE.md` doesn't define the quality gates you'd need to run, or the
   commands it defines don't exist/don't run in this environment.
 - You project that the remaining work will push total effort past 150% of

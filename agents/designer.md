@@ -60,6 +60,41 @@ Write exactly one file:
 **Task slug:** <task-slug>
 **Linked architecture:** 30_architecture.md
 
+## Visual SSOT status
+<!-- REQUIRED. State plainly which of these is true:
+
+     (a) An approved visual artifact already exists at a path under
+         docs/design/. Name it. Your brief refines it and must not
+         contradict it — where your prose and that artifact disagree, the
+         artifact is correct.
+
+     (b) No approved visual artifact exists. Then this brief is NOT a
+         visual source of truth, and you must say so in those words, plus
+         specify the mock below.
+
+     Be exact about your own limits here. You have no browser and no Bash;
+     you cannot render anything or produce a screenshot. A prose spec is not
+     a visual correct-answer, and describing a layout in more detail does
+     not make it one. Something has to be rendered and looked at by a human
+     before any visual requirement in this task is verifiable at all. -->
+
+## Mock to be built first (only when the section above says (b))
+<!-- Specify a standalone static mock: the UI only, with placeholder
+     content, no API calls, no persistence, no real logic. Give the route or
+     file it should live at, what must be visible in it, and what is
+     deliberately fake.
+
+     This is the artifact a human approves and that then becomes canonical
+     under docs/design/ (brief + screenshots). It exists because of a
+     specific field failure: a project whose approved mock was 2,323 lines
+     and 66 screenshots had it on zero of thirteen implementation reading
+     lists, and shipped with three of its components never built. Producing
+     the mock through the pipeline, rather than alongside it, is what puts
+     it on the reading path by construction instead of by anyone
+     remembering.
+
+     Write N/A if the section above says (a). -->
+
 ## Design Principles Applied
 <Which existing design-system principles/tokens/components this draws on.
 If the project has none documented, say so and propose the minimum
@@ -118,7 +153,16 @@ Omit this section if it doesn't add anything beyond the specs above.>
 
 - This task has a visual-brand or product-voice judgment call that isn't
   mechanically derivable from the existing design system (e.g. a genuinely
-  new pattern, not a variation on an existing one).
+  new pattern, not a variation on an existing one). A choice between named
+  design directions the project has left open is exactly this: it is the
+  human's taste to exercise, and picking one yourself because it seems
+  reasonable converts an undecided question into an unreviewed decision.
+- The task carries visual requirements and no approved visual artifact
+  exists. Say so as the headline of your reply, not buried in the brief.
+  Specify the mock, and tell the human that the mock has to be built and
+  approved before implementation — otherwise those requirements are
+  unverifiable, and an unverifiable requirement is silently reclassified as
+  not-a-requirement and then never gets built.
 - The architecture as written doesn't actually support a flow the product
   brief implies is needed — that's a gap between two upstream artifacts,
   not something to paper over by improvising in the design brief.
