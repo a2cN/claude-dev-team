@@ -34,15 +34,26 @@ set -u
 
 INPUT=$(cat)
 
-# jq is assumed present (Claude Code ships it for hook use in its own docs
-# examples). If it's missing, fail open with a warning rather than blocking
-# every Bash call in a project that lacks jq.
-if ! command -v jq >/dev/null 2>&1; then
-  echo "block-git-write.sh: jq not found on PATH; skipping git-write check for this call." >&2
-  exit 0
+# Extract the command to inspect. jq gives us the exact `.tool_input.command`
+# string; when jq is unavailable we fall back to scanning the raw payload with
+# JSON punctuation flattened to whitespace.
+#
+# IMPORTANT: this check must never fail *open*. An earlier version of this
+# script exited 0 when jq was missing, which silently disabled the harness's
+# #1 hard rule on any machine without jq (a common case -- jq is not part of
+# a default install on many systems, and was absent on the machine this
+# harness was first developed on). Degraded mode over-blocks rather than
+# under-blocks: scanning the whole payload can flag a mutating verb that
+# appears in a description or file path, which is the safe direction to err.
+DEGRADED=0
+if command -v jq >/dev/null 2>&1; then
+  COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+else
+  DEGRADED=1
+  # Flatten JSON quoting/escapes to whitespace so the bare-word `git` gate
+  # below still matches `"command":"git push"`.
+  COMMAND=$(printf '%s' "$INPUT" | tr '"\\{},:' '      ')
 fi
-
-COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
 if [ -z "$COMMAND" ]; then
   exit 0
@@ -66,13 +77,19 @@ BLOCKED_SUBCOMMANDS='\b(commit|push|merge|rebase|reset|cherry-pick|revert|filter
 # (e.g. `git branch -D`, `git checkout -f`, `git tag -f`, `git push --force`).
 FORCE_FLAGS='(--force([[:space:]=]|$)|--force-with-lease|--hard\b|[[:space:]]-D\b|[[:space:]]-f\b)'
 
+if [ "$DEGRADED" -eq 1 ]; then
+  DEGRADED_NOTE=" (NOTE: jq is not installed, so this check ran in degraded mode against the whole tool payload rather than just the command string -- if this was a read-only command that merely mentions a mutating verb, install jq for precise matching.)"
+else
+  DEGRADED_NOTE=""
+fi
+
 if printf '%s' "$COMMAND" | grep -qE "$BLOCKED_SUBCOMMANDS"; then
-  echo "BLOCKED by claude-dev-team/block-git-write.sh: '$COMMAND' looks like a git command that mutates repository or remote state (commit/push/merge/rebase/reset/etc). Claude Dev Team agents must never run this. Prepare the change (diff, branch, suggested commit message) in the pipeline artifact instead, and ask the human operator to run the git command themselves." >&2
+  echo "BLOCKED by claude-dev-team/block-git-write.sh: '$COMMAND' looks like a git command that mutates repository or remote state (commit/push/merge/rebase/reset/etc). Claude Dev Team agents must never run this. Prepare the change (diff, branch, suggested commit message) in the pipeline artifact instead, and ask the human operator to run the git command themselves.${DEGRADED_NOTE}" >&2
   exit 2
 fi
 
 if printf '%s' "$COMMAND" | grep -qE "$FORCE_FLAGS"; then
-  echo "BLOCKED by claude-dev-team/block-git-write.sh: '$COMMAND' uses a force/destructive flag. A human must review and run this manually." >&2
+  echo "BLOCKED by claude-dev-team/block-git-write.sh: '$COMMAND' uses a force/destructive flag. A human must review and run this manually.${DEGRADED_NOTE}" >&2
   exit 2
 fi
 

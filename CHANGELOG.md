@@ -169,3 +169,33 @@ These weren't fully resolved in this build and are worth revisiting:
    missing rather than silently working in the wrong directory — but
    there's no automated check preventing the typo itself. Low risk, but
    worth knowing.
+
+7. **`block-git-write.sh` runs in degraded mode without `jq`.** The hook
+   prefers `jq` to extract `.tool_input.command` precisely. When `jq` is
+   absent it flattens the raw JSON payload and applies the same patterns to
+   the whole thing, which over-blocks rather than under-blocks (a read-only
+   command whose *description* mentions "commit" can be flagged). Install
+   `jq` for precise matching. The block message says which mode it ran in.
+
+## Post-build fix (applied after the initial commit)
+
+**`block-git-write.sh` failed open when `jq` was missing — fixed.**
+
+The initial version exited `0` (allow) if `jq` was not on `PATH`. Because
+`jq` is not installed by default on many systems — including the machine this
+harness was developed on — the hook silently allowed *every* git-mutating
+command it was written to block. The regex patterns themselves were correct
+(verified 13/13 against the intended allow/block cases); the defect was
+entirely in the plumbing ahead of them, which is why isolated pattern testing
+during the build did not catch it. End-to-end testing through the real hook
+entry point, on a machine without `jq`, is what surfaced it.
+
+The fix removes the hard `jq` dependency and makes the check fail *closed*:
+`jq` is used when present, and a payload-flattening fallback runs when it is
+not. Re-verified 13/13 end-to-end with `jq` absent.
+
+Generalizable lesson for this harness: a control that fails open is worse than
+no control, because it reads as protection while providing none. Any future
+hook added here should be tested through its real entry point in the
+environment it will actually run in, not just as isolated logic — and should
+prefer over-blocking to under-blocking when its inputs are unavailable.
