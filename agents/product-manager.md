@@ -75,8 +75,15 @@ P0 (blocking) | P1 (high) | P2 (normal) | P3 (nice-to-have)
 - <Anything you're taking on faith from the request. Flag anything risky.>
 
 ## Open Questions for the Human
-- <Anything genuinely ambiguous in 00_request.md that changes scope or
-  priority depending on the answer. If there are none, write "None.">
+<!-- These are rows in `docs/OPEN-DECISIONS.md`, not a list of their own.
+     For each genuinely ambiguous thing in `00_request.md` that changes
+     scope or priority depending on the answer: append a row to the ledger
+     (id `OD-<task-slug>-NN`, Status OPEN), then cite the id here with a
+     one-line summary. The question is recorded in one place, so no two
+     documents can disagree about how many are open — see
+     DOCUMENT-POLICY.md, "One ledger for open decisions". Write "None." if
+     there are none. Never write CLOSED yourself; only a human may. -->
+- <OD-<task-slug>-NN — <the question, in one line>>
 ```
 
 ## Quality bar
@@ -119,6 +126,11 @@ P0 (blocking) | P1 (high) | P2 (normal) | P3 (nice-to-have)
   in the pipeline (the plan is), but if `00_request.md` asked you to make
   an irreversible-sounding call, defer it to a human via Open Questions
   instead of deciding it yourself.
+- Never set a `docs/OPEN-DECISIONS.md` row to `CLOSED`, write its
+  Resolution cell, or delete a row. You may append rows and append context
+  to existing ones. Closing your own open question converts an undecided
+  question into an unreviewed decision, which is the failure this harness
+  is built against.
 
 ## Handoff
 

@@ -86,9 +86,18 @@ differently. Test the hook by piping a payload through it and checking it
 exits 2; a guardrail that fails open reads as protection while providing
 none.
 
-**3. `docs/adr/`, `docs/design/`, `docs/archive/`.** Empty directories with
-a `README.md` in each explaining what belongs there. `docs/archive/` must
-say, in its own text, that it is off the implementation reading path.
+**3. `docs/adr/`, `docs/design/`, `docs/archive/`, `docs/OPEN-DECISIONS.md`.**
+Empty directories with a `README.md` in each explaining what belongs there.
+`docs/archive/` must say, in its own text, that it is off the
+implementation reading path. `docs/OPEN-DECISIONS.md` is copied from
+`templates/OPEN-DECISIONS.md` and starts with an empty table — it is where
+every open question in the project lives from here on, one row each, closed
+only by you.
+
+Install `scripts/claude-dev-team/verify-dev-team.sh` and the sample
+workflow in the same pass. Doing it now, while the tree is empty, is much
+cheaper than retrofitting it after the first run has already dropped its
+archive.
 
 **4. Copy `DOCUMENT-POLICY.md` and `PIPELINE.md` into the project.** Do not
 cite them across repositories. An agent running in your project cannot read
@@ -99,7 +108,9 @@ see the mistake log below.)
 **5. `CLAUDE.md`.** The load-bearing one. At minimum:
 
 - **Canon order**, as a numbered list, stating explicitly that visual
-  artifacts outrank prose when they disagree — and that `docs/archive/` is
+  artifacts outrank prose when they disagree, that inside
+  `docs/design/<slug>/` the `README.md` (approved values) outranks
+  `brief.md` (the proposal that led to them) — and that `docs/archive/` is
   not in the ordering at all.
 - **"An unspecified requirement is an incomplete ticket, not a licence to
   decide."** Verbatim. This single line does more work than anything else
@@ -129,7 +140,9 @@ When you write these, watch for a specific self-contradiction: an ADR that
 says a thing is *undecided* and also that it is *not the implementer's to
 decide* leaves nobody able to start. If a decision is genuinely the human's
 but you don't want to make it now, say **"propose, then approve at the
-gate"** — that is a workflow, not a gap.
+gate"** — that is a workflow, not a gap. Name the gate: for anything
+visual, that is `45_design_approval.md`, and the decision gets a
+`docs/OPEN-DECISIONS.md` row so it is carried rather than remembered.
 
 **7. `00_request.md` for task #1.** Then `PIPELINE.md` takes over.
 
@@ -254,6 +267,8 @@ Phase 0:
 - [ ] `.gitignore` covers `.env*` and `.claude-dev-team/workspace/`
 - [ ] `permissions.deny` set, hook installed, **hook verified blocking**
 - [ ] `docs/adr/`, `docs/design/`, `docs/archive/` exist, each with a README
+- [ ] `docs/OPEN-DECISIONS.md` exists and is named as a path in `CLAUDE.md`
+- [ ] `verify-dev-team.sh` installed and running in CI on every PR
 - [ ] `DOCUMENT-POLICY.md` and `PIPELINE.md` copied into the project
 - [ ] `CLAUDE.md`: canon order · incomplete-ticket rule · reading paths ·
       ubiquitous language · mechanical rules with status · gate commands

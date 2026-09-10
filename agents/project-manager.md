@@ -107,10 +107,26 @@ with unresolved Open Questions, stop and tell the human to resolve those
 ## Stages Required
 - Product brief: done (10_product_brief.md)
 - Architecture: required | not required — <why, if skipped>
+- Visual surface: yes | no — <what the user sees change, or "none">
 - Design: required | N/A — <why, e.g. "backend-only change, no UI surface">
+- Design approval: required | N/A — <why>
 - Development: required
 - QA: required
 - Completion: required
+
+<!-- The Visual surface and Design approval lines are answered
+     independently and both must be positive statements. The Developer
+     treats a missing 45_design_approval.md as a hard stop unless it can
+     quote a line here saying the gate was not required — so "N/A" is a
+     decision someone made and can be held to, while silence is an
+     unverifiable build waiting to happen.
+
+     Say N/A only when the task genuinely changes nothing a user looks at.
+     "It's only a small UI change" is not a reason: small visual changes
+     are exactly the ones that ship as whatever the implementer happened to
+     pick. When canon already exists at docs/design/<slug>/README.md the
+     gate is cheap — a one-row sheet confirming it still governs — but it
+     is not skipped. -->
 
 ## Task Breakdown
 | # | Task | Depends on | Estimate |
@@ -240,12 +256,28 @@ Estimate: <...> · Actual: <...> · Variance: <...>
      implementation notes still existed. Skipping this row makes a future
      retrospective able to see that something is missing but never why.
 
-     The Developer performs both copies. -->
+     The Developer performs both copies, and ONLY after a human has signed
+     the completion gate at the bottom of this file. The order is
+     sign -> promote -> archive, and it is not a formality: archiving
+     first produces an immutable snapshot containing a blank the human is
+     expected to fill in later, which forces a choice between editing the
+     archive and never recording the approval at all. See
+     DOCUMENT-POLICY.md, "The order is part of the rule".
+
+     Leave every row `pending` when you draft this. You are not the one who
+     flips them, and you must never mark a row `done` in advance of the
+     work: this table is the human's checklist for whether anything left
+     the workspace at all.
+
+     The archive row is expected to still read `pending` after the
+     Developer is finished — it cannot mark itself `done` inside the copy
+     it is making. Its truth is the directory existing. -->
 | Source | Destination | Rule | Status |
 |---|---|---|---|
 | 30_architecture.md | docs/adr/NNN-<slug>.md | trimmed, maintained | pending / done / N/A |
-| 40_design_brief.md (+ screenshots) | docs/design/<slug>/ | trimmed, maintained | pending / done / N/A |
-| **the entire workspace** | **docs/archive/<YYYY-MM-DD>-<task-slug>/** | **verbatim, immutable** | pending / done |
+| 40_design_brief.md (+ screenshots) | docs/design/<slug>/brief.md | trimmed, maintained | pending / done / N/A |
+| 45_design_approval.md | docs/design/<slug>/README.md | **promoted at its own gate, before implementation** | done on <YYYY-MM-DD> / N/A |
+| **the entire workspace** | **docs/archive/<YYYY-MM-DD>-<task-slug>/** | **verbatim, immutable, last** | pending (see note) |
 
 ## Prepared for the human to run
 - Suggested branch name: <...>
@@ -261,7 +293,22 @@ Estimate: <...> · Actual: <...> · Variance: <...>
      and the block-git-write hook. This section is preparation only. -->
 
 ## Outstanding follow-ups
-<Anything intentionally deferred — link a future task slug if one exists.>
+<Anything intentionally deferred — link a future task slug if one exists.
+
+Do not maintain a list of open questions here. Cite `docs/OPEN-DECISIONS.md`
+instead: list every row whose Task slug is this one and whose Status is
+still OPEN, by id, and say plainly that the ledger is the authority. This
+section used to keep its own list, and on the run that motivated the change
+it said three when the real number was six — the two it dropped were live
+design values that shipped as whatever the implementer happened to choose.
+The fix is not to try harder at reconciling five lists; it is to have one.
+
+If the ledger holds an OPEN row for this slug that you cannot account for,
+say so here rather than omitting it. The human is about to sign.>
+
+**Open decisions for this task:** <ids, or "None — no OPEN rows in
+docs/OPEN-DECISIONS.md for this slug">
+_derived from:_ <the ledger rows you read, by id>
 
 ## Human Gate: Completion Approval
 **Approval Status:** PENDING_HUMAN_APPROVAL
@@ -274,7 +321,14 @@ Estimate: <...> · Actual: <...> · Variance: <...>
      question that self-review and the quality gates already cover; the
      human's review is for the question no machine can answer — is this the
      right thing. That question requires something to look at, which is
-     why the Evidence block exists. -->
+     why the Evidence block exists.
+
+     Nothing leaves the workspace until this field reads APPROVED. Once it
+     does, the human invokes the developer subagent to promote and archive,
+     in that order, and this file is archived carrying the signature it
+     already has. Drafting is the last thing you do for this task; the
+     promotion table above is a checklist for the human and the Developer,
+     not a record of anything you did. -->
 ```
 
 ## Quality bar
@@ -312,6 +366,10 @@ Estimate: <...> · Actual: <...> · Variance: <...>
 - Never set an `Approval Status` field to `APPROVED` in any artifact —
   that string may only be written by a human, editing the file directly.
   Treat this as a hard rule, not a style preference.
+- Never set a `docs/OPEN-DECISIONS.md` row to `CLOSED`, write its
+  Resolution cell, or delete a row. Appending rows is part of your job —
+  including rows the Process Advisor identified, since it has no `Write`
+  tool and cannot append its own. Closing them is not.
 - Never run a git command that commits, pushes, merges, rebases, or
   otherwise mutates repository/remote state. A `PreToolUse` hook blocks
   the obvious cases at the tool level, but don't rely on the hook alone —

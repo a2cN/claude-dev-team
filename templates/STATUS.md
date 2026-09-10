@@ -3,8 +3,17 @@
   Lives at:
     .claude-dev-team/workspace/<task-slug>/STATUS.md
 
-  This file is TRANSIENT and is not committed (see DOCUMENT-POLICY.md).
-  Its value expires when the change merges.
+  This file is TRANSIENT in the working tree and is not committed there
+  (the whole workspace is gitignored). It is NOT discarded: at completion
+  it is archived verbatim to docs/archive/<YYYY-MM-DD>-<task-slug>/ along
+  with the rest of the workspace, because the Event Log is the timeline of
+  the run and a retrospective needs it. See DOCUMENT-POLICY.md,
+  "Per-artifact ruling".
+
+  What expires at merge is its authority, not its existence. After
+  archiving, nothing here is a source of truth for implementation — and
+  anything that must remain actionable for a *later* unit does not belong
+  here at all. It belongs in docs/OPEN-DECISIONS.md, which is not archived.
 
   ============================================================
   READ THIS BEFORE EDITING: the Event Log is the only authority
@@ -29,9 +38,15 @@
      of what the Event Log already says. Whoever writes it must cite the
      entries it came from, so a reader can falsify it in seconds. If the
      summary and the log disagree, **the log is right.**
-  3. Nothing here is a gate. Approval lives in `20_project_plan.md` and
-     `90_completion.md`, in fields only a human may set to APPROVED. This
-     file records that it happened; it never constitutes it.
+  3. Nothing here is a gate. Approval lives in `20_project_plan.md`,
+     `45_design_approval.md` and `90_completion.md`, in fields only a human
+     may set to APPROVED. This file records that it happened; it never
+     constitutes it.
+  4. **Open questions are not stored here.** They live as rows in
+     `docs/OPEN-DECISIONS.md`. An escalation entry in the log below cites
+     the id of the row it raised, and the Open escalations field is derived
+     from the ledger. This file answers *what happened when*; the ledger
+     answers *what is still open*.
 -->
 
 # Status: <task-slug>
@@ -44,10 +59,16 @@
 
   Log an entry for at least: workspace creation, each artifact written
   (with its revision number), each QA verdict, each human gate decision,
-  each escalation raised and resolved, and any effort figure reported.
-  Include the numbers themselves — a later reader must be able to count
-  rework cycles and total effort from this log alone, without opening
-  another file.
+  each escalation raised and resolved, each promotion and the archive, and
+  any effort figure reported. Include the numbers themselves — a later
+  reader must be able to count rework cycles and total effort from this log
+  alone, without opening another file.
+
+  An entry about an open question must cite its ledger id, e.g.
+  "— DESIGNER — Escalated OD-add-csv-export-02 (accent colour undecided)".
+  The id is what lets a reader join this timeline to
+  docs/OPEN-DECISIONS.md; an escalation logged without one is unfindable
+  the moment this workspace is archived.
 -->
 
 - <YYYY-MM-DD> — HUMAN — Workspace created; `00_request.md` written.
@@ -81,8 +102,20 @@ _derived from:_ <entries carrying effort figures>
 
 **Human gates:** <for each gate, its state as most recently logged>
 - Plan approval (`20_project_plan.md`): <PENDING / APPROVED on YYYY-MM-DD by HUMAN / REJECTED>
+- Design approval (`45_design_approval.md`): <not required per the plan / not yet reached / PENDING / APPROVED …>
 - Completion approval (`90_completion.md`): <not yet reached / PENDING / APPROVED …>
 _derived from:_ <log entries>
 
-**Open escalations:** <those raised in the log with no matching resolution entry>
+**Open escalations:** <rows in `docs/OPEN-DECISIONS.md` whose Task slug is
+  this one and whose Status is OPEN, listed by id>
+_derived from:_ <the ledger rows, cross-checked against the log entries citing those ids>
+<!-- If the log cites an id that is not in the ledger, or the ledger holds
+     an OPEN row for this slug that the log never mentions, say so here
+     rather than picking one. That disagreement is a finding: it means an
+     open question exists in exactly one of the two places that are
+     supposed to agree, and it is about to be archived. -->
+
+**Promotion and archive:** <not yet reached / promoted on YYYY-MM-DD / archived on YYYY-MM-DD>
 _derived from:_ <log entries>
+<!-- These happen only after the completion gate is APPROVED, in that
+     order. See DOCUMENT-POLICY.md, "The order is part of the rule". -->

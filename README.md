@@ -103,7 +103,30 @@ becomes optional rather than necessary.
    cp templates/00_request.md templates/STATUS.md /path/to/your-project/.claude-dev-team/templates/
    ```
 
-6. Set up the document policy — **read `DOCUMENT-POLICY.md` first**, it
+6. Install the open-decisions ledger and the verifier. These are the two
+   pieces that make the process rules mechanical rather than hoped-for:
+
+   ```bash
+   cp templates/OPEN-DECISIONS.md /path/to/your-project/docs/OPEN-DECISIONS.md
+
+   mkdir -p /path/to/your-project/scripts/claude-dev-team
+   cp scripts/verify-dev-team.sh /path/to/your-project/scripts/claude-dev-team/
+   chmod +x /path/to/your-project/scripts/claude-dev-team/verify-dev-team.sh
+
+   mkdir -p /path/to/your-project/.github/workflows
+   cp examples/github/claude-dev-team-verify.yml \
+      /path/to/your-project/.github/workflows/
+   ```
+
+   The ledger is where every open question lives — one row each, appended
+   by any role, closed only by a human. The verifier checks on every PR
+   that promotion and archiving actually ran, that nothing archived is
+   still waiting for a signature, that no archived file has been edited
+   since, and that every cited ledger id resolves. Read
+   `PIPELINE.md`'s "Verifying a run" for what each check means and for the
+   one thing it cannot catch.
+
+7. Set up the document policy — **read `DOCUMENT-POLICY.md` first**, it
    explains why each of these matters. Concretely:
 
    ```gitignore
@@ -112,7 +135,9 @@ becomes optional rather than necessary.
    ```
 
    ```bash
-   mkdir -p /path/to/your-project/docs/adr /path/to/your-project/docs/design
+   mkdir -p /path/to/your-project/docs/adr \
+            /path/to/your-project/docs/design \
+            /path/to/your-project/docs/archive
    cp DOCUMENT-POLICY.md PIPELINE.md /path/to/your-project/.claude-dev-team/
    ```
 
@@ -121,12 +146,16 @@ becomes optional rather than necessary.
    policy's own rule an unreachable document does not exist. `.gitignore`
    only excludes `workspace/`, so these stay committed.
 
-   The pipeline workspace is transient by policy and is not committed. The
-   two artifacts that must survive a merge — `30_architecture.md` and
-   `40_design_brief.md` — are promoted into `docs/adr/` and `docs/design/`
-   at completion, and verification evidence goes into the PR body. Skipping
-   this step doesn't break the pipeline; it just silently discards every
-   architectural decision and design artifact the moment you merge.
+   The pipeline workspace is transient by policy and is not committed.
+   Three artifacts survive a merge by being promoted:
+   `30_architecture.md` into `docs/adr/`, and `40_design_brief.md` plus
+   `45_design_approval.md` into `docs/design/<slug>/` as `brief.md` and
+   `README.md`. Everything else is archived verbatim into
+   `docs/archive/<date>-<slug>/`, and verification evidence goes into the
+   PR body. Skipping this step doesn't break the pipeline; it silently
+   discards every architectural decision, design artifact and audit trail
+   the moment you merge — which is exactly why step 6 installs a check for
+   it rather than leaving it to memory.
 
 That's it. No build step, no dependency install — these are just markdown
 files Claude Code reads at session start (restart your Claude Code session
@@ -160,12 +189,19 @@ it should define:
   existing patterns instead of inventing parallel ones.
 - **Design system / component library** (if the project has a UI): so the
   Designer extends it rather than inventing a new one.
-- **Promoted-artifact paths, named as paths**: `docs/adr/` and
-  `docs/design/`, spelled out literally. "See our design docs" is not
-  reachable; a path is. Also state that visual artifacts outrank prose when
-  the two disagree, and the rule that an unspecified requirement is an
-  incomplete ticket rather than a licence to decide. See
-  `DOCUMENT-POLICY.md`, "Reachability beats coverage."
+- **Promoted-artifact paths, named as paths**: `docs/adr/`,
+  `docs/design/` and `docs/OPEN-DECISIONS.md`, spelled out literally. "See
+  our design docs" is not reachable; a path is. Also state:
+  - visual artifacts outrank prose when the two disagree;
+  - inside `docs/design/<slug>/`, `README.md` (the approved values)
+    outranks `brief.md` (the proposal that led to them);
+  - `docs/archive/` is **off** the implementation reading path and
+    immutable once written;
+  - only a human may close a row in `docs/OPEN-DECISIONS.md`;
+  - an unspecified requirement is an incomplete ticket rather than a
+    licence to decide.
+
+  See `DOCUMENT-POLICY.md`, "Reachability beats coverage."
 - **The project's ubiquitous language**: one fixed spelling per domain
   concept, used in identifiers and comments alike. Agentic search is only
   as good as the vocabulary's consistency.
@@ -223,13 +259,25 @@ Use the project-manager subagent to draft the completion summary for
 add-csv-export.
 ```
 Review `90_completion.md`, review the real diff yourself, edit
-`Approval Status` to `APPROVED`. Then you — not an agent — run:
+`Approval Status` to `APPROVED`. **Then**, and not before:
+```
+Use the developer subagent to promote and archive add-csv-export.
+```
+Signing first is what keeps the archived copy of `90_completion.md` from
+being a snapshot with a blank in it. Then check the work landed:
+```
+scripts/claude-dev-team/verify-dev-team.sh --slug add-csv-export
+```
+Then you — not an agent — run:
 ```
 git checkout -b add-csv-export
-git add app/admin/users/export.ts app/admin/users/page.tsx
+git add app/admin/users/export.ts app/admin/users/page.tsx \
+        docs/adr/ docs/archive/ docs/OPEN-DECISIONS.md
 git commit -m "Add CSV export for admin users table"
 git push
 ```
+and put `Dev-Team-Run: add-csv-export` in the PR body, so CI can check the
+run left what it should have.
 
 Full turn-by-turn detail, including what happens on a QA rejection, is in
 `PIPELINE.md`.
@@ -247,10 +295,17 @@ agents/                    7 subagent definitions — copy to .claude/agents/
   process-advisor.md
 hooks/
   block-git-write.sh        PreToolUse hook — copy to .claude/hooks/claude-dev-team/
+scripts/
+  verify-dev-team.sh        CI/local check that promotion and archiving ran
+  test/run-tests.sh         this repo's own test suite (fixtures + doc coherence)
+examples/github/
+  claude-dev-team-verify.yml  sample workflow — copy to .github/workflows/
 templates/
   00_request.md              starter template for the first artifact of a task
   STATUS.md                  starter template for the per-task tracker
+  OPEN-DECISIONS.md          starter for the project's open-decisions ledger
 PIPELINE.md                  full orchestration spec + turn-by-turn walkthrough
+DOCUMENT-POLICY.md           what gets committed, promoted, archived, and why
 README.md                    this file
 CHANGELOG.md                 design decisions, rationale, open questions
 ```

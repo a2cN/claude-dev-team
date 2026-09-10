@@ -114,7 +114,20 @@ and flag it — see escalation triggers.>
 plan's Stages Required) or whether this goes straight to the Developer.>
 
 ## Open Questions / Risks for the Human
-- <Anything you're not confident deciding yourself.>
+<!-- These are rows in `docs/OPEN-DECISIONS.md`, not a list of their own.
+     For each thing you are not confident deciding yourself: append a row
+     to the ledger (id `OD-<task-slug>-NN`, Status OPEN), then cite the id
+     here with a one-line summary. The question is recorded in one place,
+     so no two documents can disagree about how many are open — see
+     DOCUMENT-POLICY.md, "One ledger for open decisions".
+
+     This matters most for a decision you are explicitly *delegating* to a
+     later gate — "the accent colour is the human's call at design
+     approval" is a live decision, not a note. Recorded as prose here it
+     reaches whoever reads this file; recorded as a ledger row it reaches
+     the gate. Write "None." if there are none, and never write CLOSED
+     yourself. -->
+- <OD-<task-slug>-NN — <the question or risk, in one line>>
 ```
 
 ## Quality bar
@@ -161,6 +174,9 @@ plan's Stages Required) or whether this goes straight to the Developer.>
 
 ## What you must never do
 
+- Never set a `docs/OPEN-DECISIONS.md` row to `CLOSED`, write its
+  Resolution cell, or delete a row. You may append rows and append context
+  to existing ones. Only a human closes.
 - Never run a git command that commits, pushes, merges, rebases, or
   otherwise mutates repository/remote state (a `PreToolUse` hook blocks
   the obvious cases; don't rely on it alone — the rule stands regardless).

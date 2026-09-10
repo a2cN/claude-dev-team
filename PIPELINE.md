@@ -48,8 +48,15 @@ letting the Project Manager drive" at the end of this document.)
 30_architecture.md      <- Solution Architect
    |
    v (only if the plan marks Design as required)
-40_design_brief.md      <- Designer                    (skipped otherwise)
+40_design_brief.md   \  <- Designer  (both written in one invocation;
+45_design_approval.md/                 skipped otherwise)
    |
+   v (only when no approved canon exists yet)
+44_mock_build.md        <- Developer, mock only — does NOT go to QA
+   |
+   v                                                 } HUMAN GATE: design approval
+   |   45_design_approval.md is signed here, and promoted to
+   |   docs/design/<slug>/README.md immediately — before implementation
    v
 50_implementation.md    <- Developer         <---+
    |                                              |
@@ -57,11 +64,21 @@ letting the Project Manager drive" at the end of this document.)
 60_qa_report.md          <- Quality Assurance -----+
    |
    v PASS
-90_completion.md         <- Project Manager            } HUMAN GATE: completion approval,
-                                                          incl. the actual git commit/push
+90_completion.md         <- Project Manager            } HUMAN GATE: completion approval
+   |
+   v (only after that gate is signed)
+promote, then archive   <- Developer
+   |
+   v
+git commit / push / PR  <- the human, never an agent
 
 70_process_review.md    <- Process Advisor (optional, any time, doesn't gate anything)
 ```
+
+The numbers read in **completion order**, which is why `44` comes before
+`45` in time but after it in the diagram: the Designer *drafts* `45` in the
+same invocation as `40`, the Developer *answers* it by building the mock in
+`44`, and the human *completes* `45` by choosing and signing.
 
 Every artifact lives in one task workspace:
 
@@ -73,31 +90,53 @@ Every artifact lives in one task workspace:
   STATUS.md
   30_architecture.md
   40_design_brief.md        (only if Design is required)
+  44_mock_build.md          (only if a mock had to be built and looked at)
+  45_design_approval.md     (only if Design approval is required)
   50_implementation.md      (revised in place across rework cycles)
   60_qa_report.md           (revised in place across rework cycles)
   70_process_review.md      (optional, any point)
   90_completion.md
 ```
 
+One document the pipeline uses is deliberately **not** in there:
+`docs/OPEN-DECISIONS.md`, the project's open-decisions ledger. It belongs
+to the project rather than to any run, because the questions it holds
+routinely outlive the unit that raised them, and because a note saying
+"someone must own this next cycle" is worthless if it is filed somewhere
+the next cycle is told not to read. Every role appends rows to it and cites
+their ids; only a human ever closes one.
+
 `<task-slug>` is a short kebab-case identifier for the task (e.g.
 `add-csv-export`). Pick it once, at workspace creation, and use it
 consistently — it's how every agent finds the right workspace.
 
-**The whole workspace directory is gitignored, by policy.** At completion
-its contents leave it three ways: `30_architecture.md` and
-`40_design_brief.md` are *promoted* into `docs/adr/` and `docs/design/` as
-living documents; the verification evidence goes into the PR body; and the
-whole workspace is *archived* verbatim to
+**The whole workspace directory is gitignored, by policy.** Its contents
+leave it three ways: `30_architecture.md`, `40_design_brief.md` and
+`45_design_approval.md` are *promoted* into `docs/adr/` and `docs/design/`
+as living documents; the verification evidence goes into the PR body; and
+the whole workspace is *archived* verbatim to
 `docs/archive/<YYYY-MM-DD>-<task-slug>/`, immutable, as the record of what
 the inputs to this run were. Read `DOCUMENT-POLICY.md` before your first
 run — it explains which documents carry an obligation to stay true, which
 are deliberately frozen stale, and why a document-driven process fails when
 that line isn't drawn.
 
-Numbering leaves gaps (there is no `70` in the main line, `80` is unused)
-deliberately, matching the original design this harness is based on: it
-leaves room to insert an extra stage later (e.g. a security-review stage
-at `35`) without renumbering everything else.
+**The order at the end is load-bearing: sign, then promote, then archive.**
+Archiving first produces an immutable snapshot with a blank in it that the
+human is expected to fill in later, which forces a choice between editing
+the archive and never recording the approval at all. See
+`DOCUMENT-POLICY.md`, "The order is part of the rule".
+
+`45_design_approval.md` is the one artifact promoted somewhere other than
+completion: it graduates at its own gate, before implementation starts,
+because a design canon that arrives after the code is not a canon.
+
+Numbering leaves gaps deliberately — `80` is unused, as are the intra-decade
+slots — so an extra stage can be inserted later (a security review at `35`,
+say) without renumbering everything else. `44` and `45` were inserted
+exactly that way. Note that `70` is *not* a gap: `70_process_review.md`
+sits there, off the main line, because the Process Advisor can run at any
+point and gates nothing.
 
 ## Human gates — non-negotiable, enforced in the agent files themselves
 
@@ -111,7 +150,33 @@ not just described in this doc:
    explicitly instructed to never write `APPROVED` itself. The Solution
    Architect is explicitly instructed to check this field and refuse to
    proceed if it isn't exactly `APPROVED`.
-2. **Completion approval.** Same mechanism, on `90_completion.md`. The
+2. **Design approval.** Same mechanism, on `45_design_approval.md`, and it
+   applies whenever `20_project_plan.md` says `Design approval: required`.
+   The Designer drafts the sheet with the Confirmed value column **empty**;
+   the human fills it in and signs; the Developer refuses to implement
+   until it reads `APPROVED`. **A missing sheet is a stop, not a skip** —
+   the Developer may only proceed without one if it can quote the plan's
+   line saying the gate was not required, so skipping it is always a
+   decision someone made and can be held to.
+
+   This gate exists because the Designer has no browser and no Bash. It
+   cannot render or screenshot anything, so a design brief is prose, and
+   prose is not a visual correct-answer however detailed it gets.
+   Something has to be built and looked at before any visual requirement
+   is verifiable at all — that is the mock round at `44_mock_build.md`,
+   whose only reviewer is the human, at this gate.
+
+   On approval the sheet is promoted to `docs/design/<slug>/README.md`
+   straight away. It is a *different document* from the brief, and that is
+   the point: a brief is written entirely in proposal voice, so promoting
+   one as canon publishes a canon stating its own values are unconfirmed
+   and listing the rejected options as though they were live. On the run
+   that produced this gate, the Designer's ranking was C→B→A and the human
+   chose A; a verbatim promotion would have left "recommended: C→B→A"
+   sitting in canon next to an implementation using A, where the next agent
+   to read it has every reason to "fix" the discrepancy in the wrong
+   direction.
+3. **Completion approval.** Same mechanism, on `90_completion.md`. The
    Project Manager drafts it after QA passes; only a human approves it.
    This gate is **evidence-based, not report-based**: `90_completion.md`
    carries an Evidence block (a screenshot of the running feature, a
@@ -124,7 +189,17 @@ not just described in this doc:
    self-review already cover. The human's review is for the question no
    machine can answer — is this the right thing — and that needs something
    to look at. See `DOCUMENT-POLICY.md`, "Approve artifacts, not reports."
-3. **All git write operations.** No agent in this harness ever runs
+
+   Nothing leaves the workspace until this field reads `APPROVED`. The
+   human then invokes the Developer to promote and archive, in that order,
+   and the archived copy carries the signature it already has.
+4. **Closing an open decision.** `docs/OPEN-DECISIONS.md` rows are
+   appended by any role and set to `CLOSED` only by a human, who also
+   writes the Resolution. Same rule shape as `APPROVED`, and for the same
+   reason: an agent that resolves its own open question has converted an
+   undecided question into an unreviewed decision. Agents may add rows and
+   add context to existing ones; they never close and never delete.
+5. **All git write operations.** No agent in this harness ever runs
    `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, or
    similar. Agents prepare a diff (by actually making the file changes),
    a suggested branch name, and a suggested commit message — a human runs
@@ -138,21 +213,21 @@ not just described in this doc:
      level, regardless of what the agent was told to do. This is
      defense-in-depth, not the primary control — see "Setting up the git
      guardrail" below for the primary control.
-4. **Irreversible/production-affecting actions.** Deploys, real (not
+6. **Irreversible/production-affecting actions.** Deploys, real (not
    test/staging) migrations, and secrets access are out of scope for
    every agent in this harness — they design for and describe these, they
    never execute them. Each agent's escalation triggers call this out.
-5. **Strategic/scope-changing calls.** Any point where an agent notices
+7. **Strategic/scope-changing calls.** Any point where an agent notices
    the work implies a decision bigger than "how do we build the already-
    agreed-on thing" (roadmap calls, whether to support something at all,
    quietly expanding scope) is an explicit escalation trigger in the
    relevant agent's prompt — resolved by the human, never decided by the
    agent.
-6. **Estimate overrun (>150% of plan).** The Developer is instructed to
+8. **Estimate overrun (>150% of plan).** The Developer is instructed to
    stop and flag `ESCALATION: ESTIMATE_OVERRUN` rather than keep working
    past this threshold. The Project Manager recomputes this flag every
    time it's re-invoked and surfaces it plainly.
-7. **QA rejection loop cap (2 rework cycles).** The Developer gets two
+9. **QA rejection loop cap (2 rework cycles).** The Developer gets two
    chances to rework a rejected implementation (revisions 2 and 3). If QA
    rejects revision 3 too — logged as `Rework cycle: 2` with verdict
    `REJECT`, meaning both rework chances are now used up — QA and the
@@ -286,25 +361,70 @@ Check `20_project_plan.md`'s Stages Required section. If Design is
 > Use the designer subagent to write the design brief for
 > add-csv-export.
 
-If Design is "not required" / "N/A," skip straight to step 6.
+It writes two files: `40_design_brief.md` (the proposal — options,
+rationale, a recommendation) and `45_design_approval.md` (the decision
+sheet, with the answers left blank for you).
 
-**6. Implementation.**
+If Design is "not required" / "N/A," skip straight to step 7.
+
+**6. Design approval — second human gate.**
+
+Read `40_design_brief.md`'s Visual SSOT status. It says one of two things,
+and they lead to different next actions:
+
+- **(b), no approved visual artifact exists.** Something has to be built
+  and looked at before you can decide anything. Type:
+  > Use the developer subagent to build the mock for add-csv-export.
+
+  Say "build the mock" and not "implement" — the same subagent with a
+  vaguer instruction will build the feature. It produces
+  `44_mock_build.md`, whose "How to look at it" section gives you the
+  command to run and the route to open. Run it. Actually look at it. That
+  round never goes to QA; you are its reviewer.
+- **(a), canon already exists** at `docs/design/<slug>/README.md`. No mock
+  round. The sheet is short — it confirms the existing canon still governs
+  and lists what it doesn't cover.
+
+Then open `45_design_approval.md` and fill in the **Confirmed value**
+column yourself, from what you saw. Fill in the Rejected proposals table
+too — especially any case where you overruled the Designer's own
+recommendation, because that is the one a later agent is most likely to
+try to undo. Then sign it, the same way as step 3:
+
+```
+**Approval Status:** APPROVED
+```
+
+plus `Decided by` and `Decided on`. Then promote it:
+> Use the developer subagent to promote 45_design_approval.md for
+> add-csv-export.
+
+This one promotion happens **now**, not at completion, because the
+implementation that follows has to be able to read the canon it is being
+built against. Everything else graduates at the end.
+
+**7. Implementation.**
 
 Type:
 > Use the developer subagent to implement add-csv-export.
+
+If the plan required design approval, the Developer checks that
+`45_design_approval.md` reads `APPROVED` and refuses to proceed otherwise
+— including when the file is simply absent. That is deliberate: a missing
+approval sheet is a stop, never a silent skip.
 
 This is the step that actually changes code in your project and runs
 your real lint/test/build commands (as defined in your project's
 `CLAUDE.md`). Review `50_implementation.md` — specifically the Quality
 Gate Results section, verbatim, and the "Ready for QA" line.
 
-**7. QA — independent verification.**
+**8. QA — independent verification.**
 
 Type:
 > Use the quality-assurance subagent to review add-csv-export.
 
 Read `60_qa_report.md`. If the verdict is REJECT and the rework cap
-isn't reached, go back to step 6 (the Developer will read the QA report
+isn't reached, go back to step 7 (the Developer will read the QA report
 and address the defects). If PASS, continue.
 
 If the report shows `Rework cycle: 2` with verdict REJECT (i.e., revision
@@ -315,7 +435,7 @@ Developer a fourth time on your own. Decide yourself (or re-invoke the
 project-manager subagent to help you think it through) whether to
 re-scope, go back to the Solution Architect, or extend the cap knowingly.
 
-**8. Completion — second human gate.**
+**9. Completion — third human gate.**
 
 Once QA shows PASS:
 > Use the project-manager subagent to draft the completion summary for
@@ -328,22 +448,44 @@ has rows marked MISSING, that is the finding: decide whether to accept the
 gap knowingly or send it back, and don't let a confident summary stand in
 for the artifact you couldn't see.
 
-Also check the "Artifacts due for promotion and archiving" table. If rows
-are still `pending`, nothing has left the workspace yet and it will all be
-lost at merge, because the workspace isn't committed:
+Check the "Open decisions for this task" line against
+`docs/OPEN-DECISIONS.md`. Anything still `OPEN` is something you are about
+to ship undecided. Close the rows you can answer — you are the only one who
+may — and knowingly accept the rest.
 
-> Use the developer subagent to promote and archive the artifacts listed in
-> 90_completion.md for add-csv-export.
+**Then sign, and only then promote.** Edit `Approval Status` to `APPROVED`,
+exactly as in step 3.
 
-Do not skip the archive row on the grounds that the task went smoothly. The
+**10. Promote and archive — after the signature, never before.**
+
+> Use the developer subagent to promote and archive add-csv-export.
+
+The Developer checks that the gate above reads `APPROVED` and refuses
+otherwise. It promotes each row in the table, marking it `done`, and
+archives the workspace last. The archive row stays `pending` — nothing can
+mark itself done inside the copy it is making; its truth is the directory
+existing.
+
+The order is not fussiness. Archive first and the snapshot contains a blank
+you are expected to fill in later, which leaves you choosing between editing
+an immutable archive and never recording your approval anywhere. On the run
+that produced this rule, the workspace was archived first and the signature
+went into the archive — and an edited archive looks exactly like an unedited
+one, so nothing would ever have flagged it.
+
+Do not skip the archive on the grounds that the task went smoothly. The
 archive is the only record of *what the inputs to this run were*, and its
 value is realised at the retrospective, not now — by which point the choice
 to skip it is unrecoverable. A diff records the output; nothing records the
 input unless you keep it.
 
-When satisfied, edit `Approval Status` to `APPROVED`, exactly as in step 3.
+Then check the work was actually done:
 
-**9. Ship it — you run this, not an agent.**
+```
+scripts/claude-dev-team/verify-dev-team.sh --slug add-csv-export
+```
+
+**11. Ship it — you run this, not an agent.**
 
 ```
 git checkout -b <the suggested branch name>
@@ -359,9 +501,19 @@ body and the commit history are the only places this evidence survives, and
 they are what lets someone verify this completion claim months from now
 without you. See `DOCUMENT-POLICY.md`.
 
+Add one line to the PR body, anywhere:
+
+```
+Dev-Team-Run: add-csv-export
+```
+
+That is how CI knows which runs this change carries — it cannot see the
+workspace, which is gitignored. Write `Dev-Team-Run: none` for a change
+that did not come from the pipeline at all. See "Verifying a run" below.
+
 No agent in this harness will do this step for you, by design.
 
-**10. Optional: process review.**
+**12. Optional: process review.**
 
 At any point — after completion, after a rejection cycle that bugged you,
 or mid-task if something about how the team is working feels off:
@@ -370,13 +522,93 @@ or mid-task if something about how the team is working feels off:
 This never blocks anything. Read `70_process_review.md` when you want
 candid feedback on the process itself, separate from the product.
 
+## STATUS.md — the run's timeline
+
+`STATUS.md` is created by the Project Manager alongside `20_project_plan.md`
+and updated on every re-invocation. It has exactly two parts, and the
+division between them is the whole design:
+
+- **The Event Log** is append-only and authoritative. Every role may
+  append; nobody edits or deletes an existing entry. A wrong entry is
+  corrected by appending a correction, never by fixing it in place.
+- **The Derived Summary** is a cache, recomputed from the log on every
+  read, and each field cites the log entries it came from so a reader can
+  falsify it in seconds. If the summary and the log disagree, the log is
+  right.
+
+This shape exists because the alternative failed in the field: overwritten
+status fields, in a single-person project with no concurrent writers,
+drifted out of agreement with reality and reported a completed build that
+did not exist. An overwrite destroys the previous value, so a wrong write
+leaves no trace and reads exactly like a right one.
+
+Two things `STATUS.md` is not. It is **not a gate** — approval lives in
+`20_project_plan.md`, `45_design_approval.md` and `90_completion.md`, in
+fields only a human may set; this file records that approval happened, it
+never constitutes it. And it is **not where open questions live** — those
+are rows in `docs/OPEN-DECISIONS.md`, and an escalation entry in the log
+cites the id of the row it raised. `STATUS.md` answers *what happened
+when*; the ledger answers *what is still open*. The split matters because
+`STATUS.md` is archived at completion and the ledger is not: an open
+question recorded only here becomes unreachable at exactly the moment the
+next unit starts.
+
+Full field-by-field template, with the rules stated inline:
+`templates/STATUS.md`.
+
+## Verifying a run
+
+`scripts/verify-dev-team.sh` checks that a run left the record it was
+supposed to leave. Install it into the consuming project (see `README.md`)
+and wire the sample workflow at
+`examples/github/claude-dev-team-verify.yml` so it runs on every PR.
+
+It is not a Claude Code hook. `hooks/block-git-write.sh` matches a command
+string at tool-call time; this reads the filesystem and `git diff` at
+review time. Different shape, different install path, no shared code.
+
+What it checks, in three groups:
+
+| Group | Question |
+|---|---|
+| `A0`–`A6` | Was the run archived at all, is every required artifact in it, was every gate signed before the snapshot was taken, and has nothing in `docs/archive/` been modified since? |
+| `B1`–`B3` | Did promotion actually run, do the promoted destinations exist, and does every design canon carry the `README.md` that makes it canon rather than a proposal? |
+| `C1`–`C4` | Does every cited `OD-` id resolve to a ledger row, are the ids unique, and has no row been deleted? |
+
+Two of these are worth calling out because nothing enforced them before.
+`A3` greps the archive for `PENDING_HUMAN_APPROVAL`, which is the
+mechanical form of the invariant **no archived file may contain a field
+anyone is expected to fill in later**. `A6` asserts that the diff touching
+`docs/archive/` contains only additions, which is the first time
+"immutable once written" has been anything other than a sentence.
+
+**How it knows which runs a PR carries — and the honest limit.** The
+workspace is gitignored, so CI cannot see a run in flight. The script
+therefore asks the PR to declare its runs (`Dev-Team-Run: <slug>`, or
+`Dev-Team-Run: none`), falling back to any archive directory it can see
+added in the diff. That is a self-report, and it cannot catch a pipeline
+run that left no trace at all. What it does catch is the case that
+actually happened — a run that produced artifacts and then dropped them —
+and it converts an omission from silence into a line a reviewer can see.
+Do not present it as airtight.
+
+Quality Assurance also runs a cheaper preflight mid-pipeline:
+
+```
+scripts/claude-dev-team/verify-dev-team.sh --workspace .claude-dev-team/workspace/add-csv-export
+```
+
+which catches unfilled placeholders and dangling ledger ids while the
+workspace still exists to fix them in. It deliberately does *not* check for
+unsigned gates: in a live workspace, an unsigned gate is the correct state.
+
 ## Resuming a broken or interrupted task
 
 Because every handoff is a file, not conversation state, you can pick a
-task back up in a brand-new Claude Code session at any time: open the
-task workspace, check `STATUS.md`'s Current Stage, and re-invoke whichever
-agent produces the next artifact. Nothing about this pipeline depends on
-a single long-running session.
+task back up in a brand-new Claude Code session at any time: open the task
+workspace, read `STATUS.md`'s Event Log — the log itself, not the summary
+above it — and re-invoke whichever agent produces the next artifact.
+Nothing about this pipeline depends on a single long-running session.
 
 ## Advanced: letting the Project Manager drive
 
@@ -391,7 +623,7 @@ This harness does not assume you'll do this, and the Project Manager's
 own prompt (`agents/project-manager.md`) is deliberately written to give
 you a "Next:" instruction either way, so the manual and the automated
 patterns both work with the same files. If you do try this pattern, keep
-the human gates (steps 3 and 8 above) as manual edits regardless — that's
+the human gates (steps 3, 6 and 9 above) as manual edits regardless — that's
 the part that must stay a real human action, not something to automate
 away even in this mode.
 
@@ -414,3 +646,17 @@ away even in this mode.
   barrier the way the git hook is. If your project needs a harder
   guarantee, consider a `permissions.deny` rule scoped to your source
   directories for the `quality-assurance` agent specifically.
+- `verify-dev-team.sh` learns which runs a PR carries from a
+  `Dev-Team-Run:` line the human writes. Because the workspace is
+  gitignored, a run that produced nothing leaves nothing for CI to notice,
+  so the check cannot catch a pipeline run that was abandoned without
+  trace. It catches the failure that actually occurred — artifacts
+  produced and then dropped — and makes omission visible rather than
+  silent. Treat it as a floor, not a proof.
+- The design-approval gate adds real ceremony: a third gate, and for a new
+  visual surface a mock round before implementation. The cheap path is
+  deliberate — when canon already exists, `45_design_approval.md` is a
+  one-row sheet confirming it still governs. But that path has to stay a
+  *positive statement* in the plan. The moment "no visual surface" becomes
+  something an agent infers rather than something a human wrote down, the
+  gate is dead and you are back to approving screenshots after the fact.
