@@ -1,0 +1,27 @@
+# This harness's own CI.
+#
+# It ships no application code, so there is exactly one thing to run: the
+# fixture suite for the verifier, plus the grep-based assertions that keep
+# the seven agent files and the four prose documents describing the same
+# pipeline. Those assertions live in the same script, because a rule about
+# documents wants a mechanism as much as a rule about code does — see
+# DOCUMENT-POLICY.md, "Prefer mechanical enforcement to prose".
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run the verifier fixture suite and doc-coherence checks
+        run: bash scripts/test/run-tests.sh

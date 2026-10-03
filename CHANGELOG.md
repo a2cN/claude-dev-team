@@ -1,5 +1,146 @@
 # Design Notes / Changelog
 
+## v1.2.0 — the gaps a real run found
+
+Everything below was reported by one run of the pipeline against a real
+consuming project. Four separate issues, and they turned out to share a
+root: **the boundaries between approving, confirming and archiving were
+never defined on the time axis.** The documents said what each step
+produced; nothing said what order the steps happened in, so the order
+varied, and each of the four failures is a different consequence of that.
+
+### Promotion and archiving now have a mechanism
+
+QA returned PASS, a PR was opened, and the promotion/archive step never
+ran. Nothing caught it. The change would have merged with the whole audit
+trail — plan, QA report, implementation notes, design brief — destroyed by
+the gitignore. It surfaced only because a reviewer clicked a link into a
+gitignored path and asked why.
+
+`DOCUMENT-POLICY.md` had already stated the diagnosis, one section away
+from the defect: *"A rule with a mechanical form and no mechanism is a rule
+you have decided to violate later."* The promotion step had a precise
+checkable form and relied on someone remembering. It was not on the
+"Prefer mechanical enforcement to prose" table; the first four rows of that
+table were all rules about *code*, which is the blind spot — it is easier
+to see that a rule about code wants a linter than to see that a rule about
+the process wants one too.
+
+So `scripts/verify-dev-team.sh` now exists, with a fixture suite
+(`scripts/test/run-tests.sh`) and a sample workflow. It checks that every
+declared run was archived, that every promotion row is `done`, that
+nothing archived is waiting for a signature, that every cited ledger id
+resolves, and — for the first time — that `docs/archive/` is genuinely
+append-only, by asserting the diff against it contains only additions.
+
+The honest limit is documented rather than glossed: because the workspace
+is gitignored, CI cannot see a run in flight, so the PR declares its runs
+with a `Dev-Team-Run:` line. That is a self-report and cannot catch a run
+that left no trace at all. It catches the failure that actually happened —
+artifacts produced and then dropped — and turns an omission from silence
+into a reviewable line.
+
+### The completion signature no longer arrives after the archive
+
+`90_completion.md` ends with the human's approval field. The workspace was
+archived at completion, as the policy requires, and *then* the human
+approved — so the only copy of the field lived inside an immutable
+snapshot. The approval step and the archive rule were mutually exclusive as
+written: either the human edits a frozen archive, or the approval is never
+recorded anywhere.
+
+The fix is ordering, not a new document. `PIPELINE.md` step 8 is split into
+**sign (9) → promote and archive (10) → git (11)**, the Developer now
+carries a hard gate refusing to promote or archive until
+`90_completion.md` reads `APPROVED`, and `DOCUMENT-POLICY.md` states the
+invariant that makes it checkable:
+
+> **No archived file may contain a field that anyone is expected to fill in
+> later.**
+
+One consequence had to be designed around rather than fixed: the Developer
+cannot mark the *archive* row `done` inside the copy that marking would
+have to precede. That row stays `pending` by design and its truth is the
+directory existing, which is why check `B1` exempts it.
+
+### One ledger for open decisions
+
+A human at the completion gate asked *"what is still undecided?"* Answering
+it needed five artifacts, each listing open items under a different
+heading, each saying three. The union was **six**. `90_completion.md` — the
+document whose entire job is to hand the unit to the human — listed three,
+and the two it dropped were live design values that would have shipped as
+whatever the implementer happened to pick.
+
+Nothing had gone wrong at any single step. There were five prose lists and
+no step that reconciled them, which is the failure `DOCUMENT-POLICY.md`'s
+own append-or-derive rule already predicts: five stored mutable summaries
+of one underlying state.
+
+`docs/OPEN-DECISIONS.md` is now the single place a row is created, ids are
+`OD-<task-slug>-NN`, and artifacts cite ids instead of restating items. The
+count that used to disagree is `grep -c`. Only a human writes `CLOSED` —
+same rule shape as `APPROVED`, same reasoning. The ledger is not archived
+and does not belong to a run, which is the point: rows that outlive their
+unit simply stay `OPEN`, so there is no migration step to forget. A related
+contradiction is fixed at the same time — `templates/STATUS.md` claimed to
+be transient and uncommitted while the per-artifact table archived it,
+which is how escalations were dying at archive time.
+
+### A design brief can no longer be promoted as canon
+
+`docs/design/` is the highest-ranked canon in a consuming project, and
+promotion into it was specified as a copy of `40_design_brief.md`. That
+cannot be done honestly, because a brief is written entirely in proposal
+voice: candidates, a recommendation ranking, an open-questions section. A
+verbatim promotion publishes a canon that opens by stating its own values
+are unconfirmed and lists the rejected options as though they were live.
+
+Concretely: the Designer's ranking was C→B→A and the human chose A. A
+verbatim promotion leaves "recommended: C→B→A" sitting in canon beside an
+implementation using A, where the next agent has every reason to "fix" the
+discrepancy in the wrong direction.
+
+So the approved values are now a **different document**, exactly as this
+policy already argued for archive-vs-promoted: `45_design_approval.md`,
+drafted by the Designer with the answers blank, filled in and signed by a
+human at a third gate, and promoted to `docs/design/<slug>/README.md`
+(which outranks the promoted `brief.md`). It carries the four sections that
+had to be invented by hand on the run: confirmed value, rejected proposal
+marked dead, who decided and when, and **what this canon does NOT cover** —
+without which a populated `docs/design/` silently implies full coverage,
+which is the original failure re-run with a full directory instead of an
+empty one.
+
+The gate sits **before** implementation, not at completion, and promotes
+immediately. v1.1.2 already required an approved visual artifact before UI
+implementation but gave the approval nowhere to be recorded; this closes
+that. The mock the human looks at gets its own slot, `44_mock_build.md`,
+rather than reusing `50_implementation.md` — which is revised in place, so
+the feature build would overwrite the record of what was shown, and whose
+revisions the QA rework cap counts.
+
+The ceremony cost is real and is recorded as a known limitation. The
+mitigation is the cheap path when canon already exists: a one-row sheet
+confirming it still governs, no mock round. That path has to stay a
+*positive statement* in `20_project_plan.md` — the Developer treats a
+missing approval sheet as a hard stop and may only proceed without one by
+quoting the plan's line saying the gate was not required. The moment "no
+visual surface" becomes something an agent infers rather than something a
+human wrote down, the gate is dead.
+
+### Incidental corrections
+
+- `PIPELINE.md` claimed "there is no `70` in the main line" while
+  `70_process_review.md` occupied it. The genuinely free slots are `80`
+  and the intra-decade gaps; `44` and `45` were inserted into the latter.
+- `agents/developer.md` contained no mention of promotion or archiving,
+  despite being the assignee. The instruction existed only inside an HTML
+  comment in `agents/project-manager.md`'s output template — a file the
+  Developer never reads. It now has a section of its own.
+- `PIPELINE.md` depended on `STATUS.md` as a source of truth in two places
+  without ever describing it. It now has a section.
+
 ## v1.1.1 — retrospective readiness (fixes a real defect in v1.1.0)
 
 v1.1.0's document policy was a **two-way** split: keep it or bin it. A

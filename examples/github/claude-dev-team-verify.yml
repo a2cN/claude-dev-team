@@ -1,0 +1,44 @@
+# Sample GitHub Actions workflow for the Claude Dev Team verifier.
+#
+# Copy to .github/workflows/claude-dev-team-verify.yml in the consuming
+# project, once scripts/claude-dev-team/verify-dev-team.sh is installed.
+#
+# Two details matter and are easy to get wrong:
+#
+#   fetch-depth: 0   The verifier diffs against the base branch to check
+#                    that docs/archive/ is append-only and that no ledger
+#                    row was deleted. A shallow clone has no base commit
+#                    to diff against, so those checks degrade to SKIP and
+#                    the immutability guarantee quietly stops being
+#                    enforced.
+#
+#   PR_BODY as env   The pull request body is untrusted text written by
+#                    whoever opened it. Passing it through the environment
+#                    keeps it out of the shell command line; the script
+#                    reads it with printf and a pipe, never eval. Do not
+#                    "simplify" this into ${{ github.event.pull_request.body }}
+#                    inside the run: block — that interpolates attacker
+#                    controlled text directly into a shell script.
+#
+# The verifier tells the PR author what to do when it fails, so this
+# workflow deliberately has no failure-annotation step of its own.
+
+name: Claude Dev Team
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  verify:
+    name: Verify pipeline artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify promotion, archiving and the open-decisions ledger
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: scripts/claude-dev-team/verify-dev-team.sh
