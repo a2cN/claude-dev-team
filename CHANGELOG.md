@@ -1,5 +1,51 @@
 # Design Notes / Changelog
 
+## Unreleased — measure before changing anything
+
+The next round of changes to this harness is meant to cut tokens without
+losing quality. Neither half of that can be checked without a baseline,
+and a baseline has to be taken *before* the change. So this revision adds
+measurement only; it changes no stage, gate or hand-off.
+
+### Token counts come from the session transcripts (`LOGGING.md`, `scripts/token-report.py`)
+
+The plan was OpenTelemetry. Trying it against a real session showed it to
+be the worse source here: custom subagent names are reported as `custom`
+unless tool details are exported too, there is no file exporter, and it
+records nothing if a variable was forgotten before the run. The session
+transcripts Claude Code already writes have per-response `usage` for all
+four token types and the model, and each subagent's transcript sits beside
+a `meta.json` naming its role. `token-report.py` sums them per role, model
+and type.
+
+It also found a trap any other reader of those files would fall into: one
+response is written as several records, each repeating the full `usage`.
+In the session it was developed against, 72 of 118 responses were split
+this way; summing records would have reported roughly double. The script
+deduplicates by `requestId`, and the fixture test models exactly that.
+
+### QA tags every defect with where it came from
+
+`spec`, `misalignment`, `verification` (the three MAST failure categories)
+or `impl-bug`, most-upstream first. "Rejected twice" says how much rework
+there was; the tags say which part of the pipeline to fix. The counts go
+into the QA entry of the Event Log so they survive archiving.
+
+### `STATUS.md` records tokens and tag counts
+
+Token counts are logged by the orchestrator (`ORCHESTRATOR`), pasted from
+the script, never estimated by an agent: per stage (recommended) and for
+the whole run (required). The Derived Summary carries the whole-run line
+and the summed tag counts.
+
+### Still open
+
+- Per-stage entries depend on the orchestrator noting each stage's start
+  time. Nothing enforces it yet.
+- Whether the transcripts' layout is a stable interface is undocumented.
+  If it changes, the fixture test will keep passing and real reports will
+  go to zero — check one real run after upgrading Claude Code.
+
 ## v1.2.0 — the gaps a real run found
 
 Everything below was reported by one run of the pipeline against a real

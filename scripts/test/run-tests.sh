@@ -292,6 +292,48 @@ else
     printf 'FAIL workspace preflight catches a placeholder\n%s\n' "$out" | sed 's/^/       /'
 fi
 
+# ----------------------------------------------------------- token report
+#
+# Models the trap token-report.py exists to avoid: one API response split
+# across several transcript records, each repeating the same usage. The
+# expected totals count each response once, and attribute the subagent's
+# response to the role named in its meta.json.
+
+TOKREPORT="$HERE/../token-report.py"
+if command -v python3 >/dev/null 2>&1; then
+    TESTS=$((TESTS + 1))
+    sess="$TMPROOT/tok/s1"
+    mkdir -p "$sess/subagents"
+    u='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000}'
+    {
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u"
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u"
+        printf '{"type":"user","message":{"content":"no usage here"}}\n'
+    } >"$sess.jsonl"
+    printf '{"requestId":"r2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"m",%s}}\n' "$u" \
+        >"$sess/subagents/agent-x.jsonl"
+    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-x.meta.json"
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format line 2>&1)
+    want='Tokens: input=2 output=20 cacheRead=200 cacheCreation=2000 (requests=2; roles=developer,main)'
+    if [ "$out" = "$want" ]; then
+        printf 'ok   token report counts each response once, per role\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report counts each response once, per role\n       got:  %s\n       want: %s\n' "$out" "$want"
+    fi
+
+    TESTS=$((TESTS + 1))
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --since 2026-10-01T00:00:30Z --format line 2>&1)
+    if printf '%s' "$out" | grep -q 'requests=1; roles=developer)'; then
+        printf 'ok   token report honours --since\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report honours --since\n       got: %s\n' "$out"
+    fi
+else
+    printf 'skip token report (python3 not installed)\n'
+fi
+
 # --------------------------------------------------------- static checks
 
 TESTS=$((TESTS + 1))
@@ -345,6 +387,23 @@ assert_docs "no live doc still claims there is no 70 in the main line" 1 \
 assert_docs "the design approval artifact is documented" 0 "45_design_approval.md"
 assert_docs "the mock build artifact is documented" 0 "44_mock_build.md"
 assert_docs "the ledger is documented" 0 "docs/OPEN-DECISIONS.md"
+assert_docs "the token report is documented" 0 "token-report.py"
+
+# The failure-tag vocabulary is defined in the QA agent and summed in the
+# STATUS template; a tag renamed in one place and not the other would make
+# the counts silently stop adding up.
+TESTS=$((TESTS + 1))
+missing=""
+for tag in spec misalignment verification impl-bug; do
+    grep -qF "\`$tag\`" "$REPO_ROOT/agents/quality-assurance.md" || missing="$missing qa:$tag"
+    grep -qF "$tag=" "$REPO_ROOT/templates/STATUS.md" || missing="$missing status:$tag"
+done
+if [ -z "$missing" ]; then
+    printf 'ok   failure tags agree between the QA agent and the STATUS template\n'
+else
+    FAILURES=$((FAILURES + 1))
+    printf 'FAIL failure tags agree between the QA agent and the STATUS template (missing:%s)\n' "$missing"
+fi
 
 TESTS=$((TESTS + 1))
 hooked=$(grep -l 'block-git-write.sh' "$REPO_ROOT"/agents/*.md | wc -l | tr -d ' ')

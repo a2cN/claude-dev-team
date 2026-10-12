@@ -110,7 +110,7 @@ becomes optional rather than necessary.
    cp templates/OPEN-DECISIONS.md /path/to/your-project/docs/OPEN-DECISIONS.md
 
    mkdir -p /path/to/your-project/scripts/claude-dev-team
-   cp scripts/verify-dev-team.sh /path/to/your-project/scripts/claude-dev-team/
+   cp scripts/verify-dev-team.sh scripts/token-report.py /path/to/your-project/scripts/claude-dev-team/
    chmod +x /path/to/your-project/scripts/claude-dev-team/verify-dev-team.sh
 
    mkdir -p /path/to/your-project/.github/workflows
@@ -124,7 +124,9 @@ becomes optional rather than necessary.
    still waiting for a signature, that no archived file has been edited
    since, and that every cited ledger id resolves. Read
    `PIPELINE.md`'s "Verifying a run" for what each check means and for the
-   one thing it cannot catch.
+   one thing it cannot catch. `token-report.py` turns the session
+   transcripts into the token counts the Event Log records — see
+   `LOGGING.md`.
 
 7. Set up the document policy — **read `DOCUMENT-POLICY.md` first**, it
    explains why each of these matters. Concretely:
@@ -297,6 +299,7 @@ hooks/
   block-git-write.sh        PreToolUse hook — copy to .claude/hooks/claude-dev-team/
 scripts/
   verify-dev-team.sh        CI/local check that promotion and archiving ran
+  token-report.py           token usage per role/model/type from session transcripts
   test/run-tests.sh         this repo's own test suite (fixtures + doc coherence)
 examples/github/
   claude-dev-team-verify.yml  sample workflow — copy to .github/workflows/
@@ -306,6 +309,7 @@ templates/
   OPEN-DECISIONS.md          starter for the project's open-decisions ledger
 PIPELINE.md                  full orchestration spec + turn-by-turn walkthrough
 DOCUMENT-POLICY.md           what gets committed, promoted, archived, and why
+LOGGING.md                   what is measured per run, from where, and what never to record
 README.md                    this file
 CHANGELOG.md                 design decisions, rationale, open questions
 ```

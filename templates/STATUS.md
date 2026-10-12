@@ -69,6 +69,19 @@
   The id is what lets a reader join this timeline to
   docs/OPEN-DECISIONS.md; an escalation logged without one is unfindable
   the moment this workspace is archived.
+
+  QA verdict entries carry their failure-tag counts
+  (agents/quality-assurance.md, "Failure tags"), e.g.
+  "— QA — REJECT rev2 (tags: spec=1, impl-bug=2)".
+
+  Token usage is logged by whoever drives the pipeline (the orchestrating
+  session or the human — role ORCHESTRATOR), never estimated by an agent.
+  Run scripts/claude-dev-team/token-report.py --format line over the run's
+  session transcripts (see LOGGING.md) and paste its output verbatim:
+    - once per stage, with --since set to that stage's start (recommended;
+      this is what makes stages comparable across tasks), and
+    - once before the completion gate, covering the whole run (required).
+  Counts only — never transcript content.
 -->
 
 - <YYYY-MM-DD> — HUMAN — Workspace created; `00_request.md` written.
@@ -92,6 +105,14 @@ _derived from:_ <the specific REJECT entries, by date>
 <!-- The cap is reached at rework cycle 2 paired with a REJECT — i.e.
      revision 3, the final allowed attempt, failed QA. Then the pipeline
      is blocked pending a human decision. -->
+
+**Failure tags across REJECTs:** <spec=n, misalignment=n, verification=n, impl-bug=n — summed from the QA entries>
+_derived from:_ <the QA REJECT entries, by date>
+
+**Tokens (whole run):** <copied verbatim from the most recent whole-run ORCHESTRATOR token entry: input / output / cacheRead / cacheCreation, requests, roles — or "not yet logged">
+_derived from:_ <that entry>
+<!-- Do not add the per-stage entries together to fill this field; they
+     may overlap or leave gaps. The whole-run entry is the total. -->
 
 **Effort logged:** <sum of effort figures appearing in the log>
 _derived from:_ <entries carrying effort figures>

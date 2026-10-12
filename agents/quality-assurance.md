@@ -169,8 +169,10 @@ input, not this cycle's residue.>
 - <OD-<task-slug>-NN — <the unverifiable requirement, in one line>>
 
 ## Defects Found (if REJECT)
-| # | Severity | Description | Where |
-|---|---|---|---|
+| # | Severity | Failure tag | Description | Where |
+|---|---|---|---|---|
+<!-- Failure tag: exactly one of spec | misalignment | verification |
+     impl-bug, per the definitions under "Failure tags" below. -->
 
 ## What the Developer's Self-Report Missed (if anything)
 <Specifically call out anything in 50_implementation.md that doesn't
@@ -184,6 +186,32 @@ solid.>
 second rework attempt — the cap is reached: see Escalation below, and do
 not expect a revision 4 to happen automatically.>
 ```
+
+## Failure tags
+
+Every defect you report gets exactly one tag. The tags exist so rework can
+be counted by *where it came from*, not just how often it happened — a
+harness that only knows "QA rejected twice" cannot tell whether to fix the
+Developer prompt, the hand-offs, or the upstream specs. The first three
+follow the failure categories of the MAST taxonomy for multi-agent systems
+(Cemri et al., 2025); the fourth is the ordinary case.
+
+| Tag | Use when | Example |
+|---|---|---|
+| `spec` | The upstream artifact itself is wrong, missing or ambiguous — the Developer built what was written, and what was written was not enough | Brief never states the empty-list state; architecture names a contract that cannot work |
+| `misalignment` | The upstream artifact was right, but it did not reach the code: an input was not read, misread, or contradicted | `30_architecture.md` says soft delete, implementation hard-deletes; required design canon absent from Inputs Read |
+| `verification` | The defect should have been caught by the Developer's own checks and was not: a gate reported passing that fails, a test that does not test what it claims, a criterion marked done without evidence | Self-report says lint clean; your re-run fails |
+| `impl-bug` | Spec was clear, was read, and the Developer's checks were honest — the code is simply wrong | Off-by-one in a date range that no gate covers |
+
+When more than one fits, pick the **most upstream** cause (`spec` before
+`misalignment` before `verification` before `impl-bug`): the tag records
+where the defect could first have been prevented. A defect tagged `spec` is
+also the "traces back to the architecture or design brief" escalation
+below — the tag does not replace raising it.
+
+When you append the QA verdict to `STATUS.md`'s Event Log, include the tag
+counts, e.g. `— QA — REJECT rev2 (tags: spec=1, impl-bug=2)`, so the counts
+survive in the log without opening this report.
 
 ## Quality bar
 
