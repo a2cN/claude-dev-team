@@ -31,17 +31,26 @@ or `impl-bug`, most-upstream first. "Rejected twice" says how much rework
 there was; the tags say which part of the pipeline to fix. The counts go
 into the QA entry of the Event Log so they survive archiving.
 
-### `STATUS.md` records tokens and tag counts
+### `STATUS.md`'s Event Log is now the metadata log, in a countable format
 
-Token counts are logged by the orchestrator (`ORCHESTRATOR`), pasted from
-the script, never estimated by an agent: per stage (recommended) and for
-the whole run (required). The Derived Summary carries the whole-run line
-and the summed tag counts.
+Design and every choice behind it: `design/measurement.md`. Each line is
+`<time> — <ROLE> — <event> key=value ...`, with ten events (`run-start`,
+`verdict`, `escalate`, `tokens`, `human-fix`, ...). A separate JSONL log
+was considered and rejected: it would put the same facts in two places and
+make every role write twice. Times come from `date -Iseconds`, never from
+the model.
+
+Stages need no start times: one subagent transcript is one stage, so
+`token-report.py --format log` splits a run into stages by itself, given
+only the run's start and end. It also reports `ieq`, input-equivalent
+tokens weighted by price ratio (output x5, cache write x1.25 or x2 by TTL,
+cache read x0.1), because the raw sum is mostly cheap cache reads and
+points at the wrong thing to cut.
 
 ### Still open
 
-- Per-stage entries depend on the orchestrator noting each stage's start
-  time. Nothing enforces it yet.
+- Nothing yet checks that the Event Log follows the format, or that
+  `run-start`/`run-end` exist. A verifier check is planned.
 - Whether the transcripts' layout is a stable interface is undocumented.
   If it changes, the fixture test will keep passing and real reports will
   go to zero — check one real run after upgrading Claude Code.

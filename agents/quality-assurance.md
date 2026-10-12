@@ -209,9 +209,11 @@ where the defect could first have been prevented. A defect tagged `spec` is
 also the "traces back to the architecture or design brief" escalation
 below — the tag does not replace raising it.
 
-When you append the QA verdict to `STATUS.md`'s Event Log, include the tag
-counts, e.g. `— QA — REJECT rev2 (tags: spec=1, impl-bug=2)`, so the counts
-survive in the log without opening this report.
+Append the verdict to `STATUS.md`'s Event Log as a `verdict` event, with
+the time taken from `date -Iseconds` and the tag counts, e.g.
+`- 2026-10-13T11:20:41+09:00 — QA — verdict rev=2 result=REJECT tags=spec:1,impl-bug:2`
+(a PASS carries `tags=none`). The counts then survive in the log without
+opening this report. The line format is in `templates/STATUS.md`.
 
 ## Quality bar
 

@@ -6,11 +6,13 @@ never be written down. It exists because "make the pipeline cheaper" and
 checked: you can only say a change helped if the same numbers were taken
 before it.
 
-Two numbers are recorded per run, both in `STATUS.md`'s Event Log:
+Two kinds of number are recorded per run, both in `STATUS.md`'s Event Log.
+Why these and not others, and every choice behind them, is in
+`design/measurement.md`.
 
 | What | Who records it | Where the number comes from |
 |---|---|---|
-| Tokens, by type (input / output / cacheRead / cacheCreation), by role and model | Whoever drives the pipeline (role `ORCHESTRATOR`) | `scripts/claude-dev-team/token-report.py` over the session transcripts |
+| Tokens per stage and per run: five raw counts (input / output / cacheRead / cacheCreation 5m / 1h) and `ieq` | Whoever drives the pipeline (role `ORCHESTRATOR`) | `scripts/claude-dev-team/token-report.py` over the session transcripts |
 | Why each REJECT happened (`spec` / `misalignment` / `verification` / `impl-bug`) | QA | `60_qa_report.md`'s Defects table — see `agents/quality-assurance.md`, "Failure tags" |
 
 Everything else a retrospective wants — rework cycles, gate decisions,
@@ -33,23 +35,32 @@ file, and its `meta.json` names the subagent (`"agentType": "developer"`).
 That is everything the metrics need — per role, per model, per type —
 with nothing to install.
 
-```bash
-# whole run (required, before the completion gate)
-python3 scripts/claude-dev-team/token-report.py \
-    ~/.claude/projects/<project>/<session-id>.jsonl --format line
+One subagent file is one stage, so the stages split themselves; the only
+times you supply are the run's start and end, from the Event Log's
+`run-start` and `run-end` lines (design/measurement.md, D3).
 
-# one stage (recommended): from the moment the stage was started
+```bash
+# at run-end: lines to paste into the Event Log, one `tokens` entry each
 python3 scripts/claude-dev-team/token-report.py \
     ~/.claude/projects/<project>/<session-id>.jsonl \
-    --since 2026-10-12T04:00:00Z --format line
+    --since <run-start time> --until <run-end time> --format log
 
-# a table by role x model, to read rather than paste
-python3 scripts/claude-dev-team/token-report.py ~/.claude/projects/<project>/<session-id>.jsonl
+# the same, as a table to read
+python3 scripts/claude-dev-team/token-report.py \
+    ~/.claude/projects/<project>/<session-id>.jsonl \
+    --since <run-start time> --until <run-end time>
 ```
 
-Pass several session files if the run spanned several sessions. Paste the
-`--format line` output verbatim into the Event Log as an `ORCHESTRATOR`
-entry; the template's comments say which entries are required.
+The log format prints one `tokens scope=stage` line per subagent
+invocation (role, rev in invocation order, model, five raw counts, `ieq`),
+one `tokens scope=orchestration` line for the driving session itself, and
+one `tokens scope=run` line for the total. Pass several session files if
+the run spanned several sessions. Do this at run-end, not later: Claude
+Code deletes session transcripts after 30 days by default
+(`cleanupPeriodDays`), and a run that was not logged by then is gone.
+
+**One run per session at a time.** Two runs in one session overlap in
+time and cannot be told apart.
 
 ### The double-count trap
 
@@ -62,12 +73,15 @@ responses were split this way. `token-report.py` deduplicates by
 
 ### Reading the numbers
 
-- **Do not judge by the grand total.** `cacheRead` dominates it and is
-  billed at a small fraction of `input`. Compare each type separately, and
-  `cacheCreation` and `output` before the rest.
-- **Compare stages, not tasks.** Tasks differ in size; a stage of one task
-  is closer in shape to the same stage of another. That is why per-stage
-  entries are recommended.
+- **Judge by `ieq`, never by the raw sum.** `ieq` (input-equivalent
+  tokens) weights each type by its price relative to uncached input:
+  output x5, cache write x1.25 (5-minute) or x2 (1-hour), cache read x0.1.
+  The raw sum is dominated by cache reads, which are cheap, and points at
+  the wrong thing to cut. The raw counts stay beside it so a shift hidden
+  by the weights can still be seen.
+- **Compare stages of the same role and model, not tasks.** Tasks differ
+  in size; a stage of one task is closer in shape to the same stage of
+  another. `ieq` does not include the price difference between models.
 - **One run proves nothing.** The same prompt produces different runs.
   Keep a change only if it holds over the next few comparable tasks without
   the quality signals (human rework at the completion gate, defects found

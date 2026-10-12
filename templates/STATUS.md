@@ -54,37 +54,63 @@
 ## Event Log (append-only, chronological, authoritative)
 
 <!--
-  One line per event, oldest first. Append at the bottom.
-  Format: <YYYY-MM-DD> — <ROLE> — <what happened>
+  One line per event, oldest first. Append at the bottom. Full design:
+  design/measurement.md in the harness repo (section 4).
 
-  Log an entry for at least: workspace creation, each artifact written
-  (with its revision number), each QA verdict, each human gate decision,
-  each escalation raised and resolved, each promotion and the archive, and
-  any effort figure reported. Include the numbers themselves — a later
-  reader must be able to count rework cycles and total effort from this log
-  alone, without opening another file.
+  Format:
+    - <time> — <ROLE> — <event> <key=value ...> [— <free text>]
 
-  An entry about an open question must cite its ledger id, e.g.
-  "— DESIGNER — Escalated OD-add-csv-export-02 (accent colour undecided)".
+  <time> is ISO 8601 to the second with a zone, taken from the shell
+  (`date -Iseconds`), never written from memory: a model does not know
+  the time, and the run window below is cut on these times.
+  Roles with no shell (product-manager, designer) write the date only,
+  <YYYY-MM-DD>; the line order still gives the sequence, and the times the
+  run window is cut on (run-start, run-end) come from the ORCHESTRATOR.
+  Values contain no spaces; free text goes after the last " — ".
+  A line with no recognised <event> is still allowed — it is read by
+  humans and ignored by counting.
+
+  Events (role that writes it — required keys):
+    run-start   ORCHESTRATOR  run=<task-slug>-<n>
+    stage-start ORCHESTRATOR  stage=<role> rev=<n>
+    stage-end   ORCHESTRATOR  stage=<role> rev=<n> outcome=ok|blocked|escalated
+    verdict     QA            rev=<n> result=PASS|REJECT tags=<tag>:<n>,...
+    gate        HUMAN         gate=plan|design|completion result=APPROVED|REJECTED|REVIEWED
+    escalate    any           trigger=od|rework-cap|token-budget|contradiction|protected-path|no-mock ref=<id>
+    human-fix   HUMAN         what=code|doc|config
+    tokens      ORCHESTRATOR  pasted from token-report.py (below)
+    run-end     ORCHESTRATOR  run=<task-slug>-<n> outcome=done|abandoned
+    correction  any           ref=<time of the line being corrected>
+
+  Log at least: run-start and run-end, each artifact written (with its
+  revision number), each QA verdict, each human gate decision, each
+  escalation raised and resolved, each promotion and the archive. Include
+  the numbers themselves — a later reader must be able to count rework
+  cycles and tokens from this log alone, without opening another file.
+
+  An escalation must cite the ledger id of the row it raised in ref=, e.g.
+  "escalate trigger=od ref=OD-add-csv-export-02 — accent colour undecided".
   The id is what lets a reader join this timeline to
   docs/OPEN-DECISIONS.md; an escalation logged without one is unfindable
   the moment this workspace is archived.
 
-  QA verdict entries carry their failure-tag counts
-  (agents/quality-assurance.md, "Failure tags"), e.g.
-  "— QA — REJECT rev2 (tags: spec=1, impl-bug=2)".
+  QA verdicts carry their failure-tag counts (agents/quality-assurance.md,
+  "Failure tags"), e.g. "verdict rev=2 result=REJECT tags=spec:1,impl-bug:2".
 
-  Token usage is logged by whoever drives the pipeline (the orchestrating
-  session or the human — role ORCHESTRATOR), never estimated by an agent.
-  Run scripts/claude-dev-team/token-report.py --format line over the run's
-  session transcripts (see LOGGING.md) and paste its output verbatim:
-    - once per stage, with --since set to that stage's start (recommended;
-      this is what makes stages comparable across tasks), and
-    - once before the completion gate, covering the whole run (required).
+  Tokens are never estimated by an agent. At run-end, the ORCHESTRATOR
+  runs, over the run's session transcripts (see LOGGING.md):
+    python3 scripts/claude-dev-team/token-report.py <session>.jsonl \
+        --since <run-start time> --until <run-end time> --format log
+  and appends each output line as its own `tokens` entry. That gives one
+  line per stage (one per subagent invocation), one for the orchestrator
+  itself, and one for the whole run. Required: session transcripts are
+  deleted by Claude Code after 30 days by default, and a run whose tokens
+  were not logged by then cannot be measured at all.
   Counts only — never transcript content.
 -->
 
-- <YYYY-MM-DD> — HUMAN — Workspace created; `00_request.md` written.
+- <time> — HUMAN — Workspace created; `00_request.md` written.
+- <time> — ORCHESTRATOR — run-start run=<task-slug>-1
 
 ## Derived Summary (recomputed on every read — never hand-maintained)
 
@@ -107,12 +133,14 @@ _derived from:_ <the specific REJECT entries, by date>
      is blocked pending a human decision. -->
 
 **Failure tags across REJECTs:** <spec=n, misalignment=n, verification=n, impl-bug=n — summed from the QA entries>
-_derived from:_ <the QA REJECT entries, by date>
+_derived from:_ <the `verdict ... result=REJECT` entries, by time>
 
-**Tokens (whole run):** <copied verbatim from the most recent whole-run ORCHESTRATOR token entry: input / output / cacheRead / cacheCreation, requests, roles — or "not yet logged">
-_derived from:_ <that entry>
-<!-- Do not add the per-stage entries together to fill this field; they
-     may overlap or leave gaps. The whole-run entry is the total. -->
+**Tokens (whole run):** <copied from the `tokens scope=run` entry: ieq, and the five raw counts — or "not yet logged">
+**Heaviest stage:** <the `tokens scope=stage` entry with the largest ieq: stage, rev, ieq>
+_derived from:_ <those entries>
+<!-- Do not add the stage entries together to fill the whole-run field:
+     the orchestrator's own line is part of the run too. The scope=run line
+     is the total. -->
 
 **Effort logged:** <sum of effort figures appearing in the log>
 _derived from:_ <entries carrying effort figures>

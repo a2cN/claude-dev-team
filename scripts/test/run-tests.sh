@@ -294,41 +294,54 @@ fi
 
 # ----------------------------------------------------------- token report
 #
-# Models the trap token-report.py exists to avoid: one API response split
-# across several transcript records, each repeating the same usage. The
-# expected totals count each response once, and attribute the subagent's
-# response to the role named in its meta.json.
+# Models what token-report.py has to get right (design/measurement.md 5-6):
+#  - one API response split across several records, each repeating the
+#    same usage, is counted once;
+#  - each subagent file is one stage, named by its meta.json, and rev is
+#    the order of invocation, not the order of file names;
+#  - cache writes are split by TTL and weighted into ieq.
+# Expected ieq: stage = 1 + 10*5 + 100*0.1 + 1000*1.25 = 1311;
+#               orchestration (1h cache) = 1 + 50 + 10 + 1000*2 = 2061.
 
 TOKREPORT="$HERE/../token-report.py"
 if command -v python3 >/dev/null 2>&1; then
     TESTS=$((TESTS + 1))
     sess="$TMPROOT/tok/s1"
     mkdir -p "$sess/subagents"
-    u='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000}'
+    u1h='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000,"cache_creation":{"ephemeral_1h_input_tokens":1000,"ephemeral_5m_input_tokens":0}}'
+    u5m='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000}'
     {
-        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u"
-        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u"
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u1h"
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u1h"
         printf '{"type":"user","message":{"content":"no usage here"}}\n'
     } >"$sess.jsonl"
-    printf '{"requestId":"r2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"m",%s}}\n' "$u" \
-        >"$sess/subagents/agent-x.jsonl"
-    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-x.meta.json"
-    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format line 2>&1)
-    want='Tokens: input=2 output=20 cacheRead=200 cacheCreation=2000 (requests=2; roles=developer,main)'
+    # agent-a sorts first by name but was invoked second.
+    printf '{"requestId":"r3","timestamp":"2026-10-01T00:02:00Z","message":{"model":"m",%s}}\n' "$u5m" \
+        >"$sess/subagents/agent-a.jsonl"
+    printf '{"requestId":"r2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"m",%s}}\n' "$u5m" \
+        >"$sess/subagents/agent-b.jsonl"
+    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-a.meta.json"
+    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-b.meta.json"
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format log 2>&1)
+    stage='model=m input=1 output=10 cacheRead=100 cacheCreation5m=1000 cacheCreation1h=0 requests=1 ieq=1311'
+    want="tokens scope=stage stage=developer rev=1 $stage
+tokens scope=stage stage=developer rev=2 $stage
+tokens scope=orchestration model=m input=1 output=10 cacheRead=100 cacheCreation5m=0 cacheCreation1h=1000 requests=1 ieq=2061
+tokens scope=run stages=2 input=3 output=30 cacheRead=300 cacheCreation5m=2000 cacheCreation1h=1000 requests=3 ieq=4683"
     if [ "$out" = "$want" ]; then
-        printf 'ok   token report counts each response once, per role\n'
+        printf 'ok   token report: one count per response, one stage per subagent, weighted ieq\n'
     else
         FAILURES=$((FAILURES + 1))
-        printf 'FAIL token report counts each response once, per role\n       got:  %s\n       want: %s\n' "$out" "$want"
+        printf 'FAIL token report: one count per response, one stage per subagent, weighted ieq\n       got:\n%s\n       want:\n%s\n' "$out" "$want"
     fi
 
     TESTS=$((TESTS + 1))
-    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --since 2026-10-01T00:00:30Z --format line 2>&1)
-    if printf '%s' "$out" | grep -q 'requests=1; roles=developer)'; then
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --since 2026-10-01T00:01:30Z --format log 2>&1)
+    if printf '%s' "$out" | grep -q '^tokens scope=run stages=1 .* requests=1 ieq=1311$'; then
         printf 'ok   token report honours --since\n'
     else
         FAILURES=$((FAILURES + 1))
-        printf 'FAIL token report honours --since\n       got: %s\n' "$out"
+        printf 'FAIL token report honours --since\n       got:\n%s\n' "$out"
     fi
 else
     printf 'skip token report (python3 not installed)\n'
