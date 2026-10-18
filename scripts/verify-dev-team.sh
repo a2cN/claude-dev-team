@@ -272,6 +272,68 @@ check_ledger_append_only() {
     fi
 }
 
+# ------------------------------------------------------- event log times
+
+check_event_log_times() {
+    # check_event_log_times <STATUS.md>
+    # A7 (T-15): every timestamped Event Log line must be no earlier than
+    # the one before it, and no later than now (+5 min of slack). Agents
+    # have written estimated times instead of `date` output; a time that
+    # goes backwards or into the future is the visible trace of that. Only
+    # lines with a full ISO 8601 time are compared: date-only lines
+    # (`- 2026-10-16 — ...`) carry no order to check.
+    # The log is append-only, so a fault is fixed by a later line that names
+    # the wrong time (e.g. "訂正: 22:10:00 は概算"). A fault whose time, or
+    # the time of the line before it, appears in a later line counts as
+    # acknowledged and passes.
+    # Live workspace only: the archive is append-only, so a fault found
+    # there could never be fixed, and the check would fail forever.
+    local status="$1" now i ts epoch prev="" prev_epoch=0 suspect names later bad="" acked=""
+    local -a lines
+    if [ ! -f "$status" ]; then
+        report SKIP A7 "no STATUS.md in the workspace"
+        return
+    fi
+    if ! date -d '2026-01-01T00:00:00+09:00' +%s >/dev/null 2>&1; then
+        report SKIP A7 "this date(1) cannot parse ISO 8601 (needs GNU date)"
+        return
+    fi
+    now=$(( $(date +%s) + 300 ))
+    mapfile -t lines < <(awk '/^## Event Log/ {in_log = 1; next} /^## / {in_log = 0} in_log && /^- [0-9]/' "$status")
+    for i in "${!lines[@]}"; do
+        ts=$(printf '%s' "${lines[$i]}" |
+            sed -n 's/^- \([0-9-]\{10\}T[0-9:]\{8\}[+-][0-9:]\{5\}\) .*/\1/p')
+        [ -n "$ts" ] || continue
+        epoch=$(date -d "$ts" +%s 2>/dev/null) || continue
+        suspect="" names=""
+        if [ "$epoch" -lt "$prev_epoch" ]; then
+            # either line of the pair may be the wrong one
+            suspect="$ts (before $prev)"
+            names="${ts:11:8}|${prev:11:8}"
+        elif [ "$epoch" -gt "$now" ]; then
+            suspect="$ts (in the future)"
+            names="${ts:11:8}"
+        fi
+        if [ -n "$suspect" ]; then
+            later=$(printf '%s\n' "${lines[@]:$((i + 1))}")
+            if printf '%s' "$later" | grep -qE "$names"; then
+                acked="$acked $suspect;"
+            else
+                bad="$bad $suspect;"
+            fi
+        fi
+        prev="$ts"
+        prev_epoch="$epoch"
+    done
+    if [ -n "$bad" ]; then
+        report FAIL A7 "Event Log times out of order in $status (write times from \`date\`; to fix, append a line that names the wrong time, don't edit):$bad"
+    elif [ -n "$acked" ]; then
+        report PASS A7 "Event Log times out of order but acknowledged by a later line in $status:$acked"
+    else
+        report PASS A7 "Event Log times are in order in $status"
+    fi
+}
+
 # ------------------------------------------------------- workspace preflight
 
 if [ -n "$WORKSPACE" ]; then
@@ -281,6 +343,7 @@ if [ -n "$WORKSPACE" ]; then
     # to the archive, where a blank means the snapshot was taken too early.
     scan_placeholders A5 "$WORKSPACE"/*.md
     [ "$FAIL_COUNT" -eq 0 ] && report PASS A5 "no unfilled placeholders in $WORKSPACE"
+    check_event_log_times "$WORKSPACE/STATUS.md"
     check_ledger
     printf '\n%d passed, %d failed, %d skipped\n' "$PASS_COUNT" "$FAIL_COUNT" "$SKIP_COUNT"
     [ "$FAIL_COUNT" -gt 0 ] && exit 1

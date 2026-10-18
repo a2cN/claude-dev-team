@@ -1,5 +1,97 @@
 # Design Notes / Changelog
 
+## Unreleased — measure before changing anything
+
+The next round of changes to this harness is meant to cut tokens without
+losing quality. Neither half of that can be checked without a baseline,
+and a baseline has to be taken *before* the change. So this revision adds
+measurement only; it changes no stage, gate or hand-off.
+
+### Token counts come from the session transcripts (`LOGGING.md`, `scripts/token-report.py`)
+
+The plan was OpenTelemetry. Trying it against a real session showed it to
+be the worse source here: custom subagent names are reported as `custom`
+unless tool details are exported too, there is no file exporter, and it
+records nothing if a variable was forgotten before the run. The session
+transcripts Claude Code already writes have per-response `usage` for all
+four token types and the model, and each subagent's transcript sits beside
+a `meta.json` naming its role. `token-report.py` sums them per role, model
+and type.
+
+It also found a trap any other reader of those files would fall into: one
+response is written as several records, each repeating the full `usage`.
+In the session it was developed against, 72 of 118 responses were split
+this way; summing records would have reported roughly double. The script
+deduplicates by `requestId`, and the fixture test models exactly that.
+
+### QA tags every defect with where it came from
+
+`spec`, `misalignment`, `verification` (the three MAST failure categories)
+or `impl-bug`, most-upstream first. "Rejected twice" says how much rework
+there was; the tags say which part of the pipeline to fix. The counts go
+into the QA entry of the Event Log so they survive archiving.
+
+### `STATUS.md`'s Event Log is now the metadata log, in a countable format
+
+Design and every choice behind it: `design/measurement.md`. Each line is
+`<time> — <ROLE> — <event> key=value ...`, with ten events (`run-start`,
+`verdict`, `escalate`, `tokens`, `human-fix`, ...). A separate JSONL log
+was considered and rejected: it would put the same facts in two places and
+make every role write twice. Times come from `date -Iseconds`, never from
+the model.
+
+Stages need no start times: one subagent transcript is one stage, so
+`token-report.py --format log` splits a run into stages by itself, given
+only the run's start and end. It also reports `ieq`, input-equivalent
+tokens weighted by price ratio (output x5, cache write x1.25 or x2 by TTL,
+cache read x0.1), because the raw sum is mostly cheap cache reads and
+points at the wrong thing to cut.
+
+### The model each stage ran on is checked against its definition (`token-report.py`)
+
+A definition's `model:` line is a request, not a guarantee: a caller can
+override it, and a main session switched with `/model` mid-run changes
+what the orchestration costs. The transcripts already record the model of
+every response; until now nothing compared the two, and the only check was
+a person reading the `tokens` lines against `agents/*.md` by eye.
+`token-report.py` now prints `model-check` lines after the `tokens` lines:
+per stage `result=match|mismatch|unspecified` against
+`.claude/agents/<role>.md` (`--agents-dir` to point elsewhere; an alias
+such as `sonnet` matches any `claude-sonnet-*`), `result=switched` when
+the main session used more than one model, and a run-level result. A
+mismatch is also warned on stderr. The exit status stays 0 — the
+transcripts live on one machine, so this cannot gate CI; it makes the
+mismatch impossible to miss at run-end.
+
+Considered: adding `expected=` to the existing `tokens` lines (rejected —
+it changes a line format earlier runs were logged in, and makes old and
+new runs harder to compare); checking in `verify-dev-team.sh` (rejected —
+it would reimplement transcript reading in bash).
+
+### Event Log times that go backwards are caught (`verify-dev-team.sh` A7)
+
+The format says times come from `date`, never from memory. In the first
+real run, two lines did not: a role wrote an estimated time that landed
+after the lines that followed it, and a line was moved out of order. A
+rule an agent has to remember is a rule it will sometimes forget, so
+`--workspace` now fails (`A7`) on a time earlier than the line before it,
+or later than now plus five minutes. The log is append-only, so the fix is
+a later line naming the wrong time — `correction ref=<that time>` — and a
+fault named in a later line passes as acknowledged.
+
+The honest limit: an estimated time that happens to fall in order is not
+caught. A7 runs on the live workspace only; on the archive it could only
+ever fail, since nothing archived can be corrected.
+
+### Still open
+
+- Nothing yet checks that the Event Log follows the format, or that
+  `run-start`/`run-end` exist (A7 checks only the order of the times). A
+  verifier check is planned.
+- Whether the transcripts' layout is a stable interface is undocumented.
+  If it changes, the fixture test will keep passing and real reports will
+  go to zero — check one real run after upgrading Claude Code.
+
 ## v1.2.0 — the gaps a real run found
 
 Everything below was reported by one run of the pipeline against a real

@@ -177,7 +177,10 @@ agreement with reality in a single-person project (see
   the bottom. Never edit or delete an existing entry. If an earlier entry
   was wrong, append a correction saying so; do not fix it in place. Include
   the actual numbers (revision numbers, effort figures, verdicts) in the
-  entries, so the log alone is sufficient to reconstruct state.
+  entries, so the log alone is sufficient to reconstruct state. Write each
+  entry in the template's line format — a time from `date -Iseconds`, then
+  an event name and `key=value` pairs where one of the template's events
+  applies — so the log can be counted, not just read.
 - **The Derived Summary is recomputed from the log every time, not
   maintained.** Rewrite the whole block on each re-invocation, and cite the
   log entries each field came from. Where the log doesn't support a field,

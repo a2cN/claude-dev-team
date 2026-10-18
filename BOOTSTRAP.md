@@ -99,6 +99,11 @@ workflow in the same pass. Doing it now, while the tree is empty, is much
 cheaper than retrofitting it after the first run has already dropped its
 archive.
 
+Install `scripts/claude-dev-team/token-report.py` too, and read
+`LOGGING.md`. Task #1 is the baseline every later change to the pipeline
+is compared against; a task #1 whose token counts were never logged is a
+baseline you cannot get back.
+
 **4. Copy `DOCUMENT-POLICY.md` and `PIPELINE.md` into the project.** Do not
 cite them across repositories. An agent running in your project cannot read
 a path in the harness repo, and by the policy's own rule an unreachable
@@ -269,6 +274,8 @@ Phase 0:
 - [ ] `docs/adr/`, `docs/design/`, `docs/archive/` exist, each with a README
 - [ ] `docs/OPEN-DECISIONS.md` exists and is named as a path in `CLAUDE.md`
 - [ ] `verify-dev-team.sh` installed and running in CI on every PR
+- [ ] `token-report.py` installed; you know where this project's session
+      transcripts are (`LOGGING.md`)
 - [ ] `DOCUMENT-POLICY.md` and `PIPELINE.md` copied into the project
 - [ ] `CLAUDE.md`: canon order · incomplete-ticket rule · reading paths ·
       ubiquitous language · mechanical rules with status · gate commands
@@ -283,3 +290,5 @@ Task #1:
 - [ ] Names which mechanisms it stands up
 - [ ] Owns making the command table real
 - [ ] Its definition of done requires a screenshot of the running thing
+- [ ] Its token counts are logged per stage and for the whole run — it is
+      the baseline
