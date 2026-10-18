@@ -47,10 +47,47 @@ tokens weighted by price ratio (output x5, cache write x1.25 or x2 by TTL,
 cache read x0.1), because the raw sum is mostly cheap cache reads and
 points at the wrong thing to cut.
 
+### The model each stage ran on is checked against its definition (`token-report.py`)
+
+A definition's `model:` line is a request, not a guarantee: a caller can
+override it, and a main session switched with `/model` mid-run changes
+what the orchestration costs. The transcripts already record the model of
+every response; until now nothing compared the two, and the only check was
+a person reading the `tokens` lines against `agents/*.md` by eye.
+`token-report.py` now prints `model-check` lines after the `tokens` lines:
+per stage `result=match|mismatch|unspecified` against
+`.claude/agents/<role>.md` (`--agents-dir` to point elsewhere; an alias
+such as `sonnet` matches any `claude-sonnet-*`), `result=switched` when
+the main session used more than one model, and a run-level result. A
+mismatch is also warned on stderr. The exit status stays 0 — the
+transcripts live on one machine, so this cannot gate CI; it makes the
+mismatch impossible to miss at run-end.
+
+Considered: adding `expected=` to the existing `tokens` lines (rejected —
+it changes a line format earlier runs were logged in, and makes old and
+new runs harder to compare); checking in `verify-dev-team.sh` (rejected —
+it would reimplement transcript reading in bash).
+
+### Event Log times that go backwards are caught (`verify-dev-team.sh` A7)
+
+The format says times come from `date`, never from memory. In the first
+real run, two lines did not: a role wrote an estimated time that landed
+after the lines that followed it, and a line was moved out of order. A
+rule an agent has to remember is a rule it will sometimes forget, so
+`--workspace` now fails (`A7`) on a time earlier than the line before it,
+or later than now plus five minutes. The log is append-only, so the fix is
+a later line naming the wrong time — `correction ref=<that time>` — and a
+fault named in a later line passes as acknowledged.
+
+The honest limit: an estimated time that happens to fall in order is not
+caught. A7 runs on the live workspace only; on the archive it could only
+ever fail, since nothing archived can be corrected.
+
 ### Still open
 
 - Nothing yet checks that the Event Log follows the format, or that
-  `run-start`/`run-end` exist. A verifier check is planned.
+  `run-start`/`run-end` exist (A7 checks only the order of the times). A
+  verifier check is planned.
 - Whether the transcripts' layout is a stable interface is undocumented.
   If it changes, the fixture test will keep passing and real reports will
   go to zero — check one real run after upgrading Claude Code.

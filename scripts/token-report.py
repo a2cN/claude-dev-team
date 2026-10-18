@@ -19,9 +19,17 @@ records (one per content block), and every one of them repeats the same
 `usage`. Responses are deduplicated by requestId; summing records instead
 overcounts, by roughly 2x in the transcript this was written against.
 
+Model check (T-14): each stage's actual model is compared with the
+`model:` line in the role's definition, <agents-dir>/<role>.md (default
+.claude/agents). An alias (opus, sonnet, haiku, fable) matches any model
+id of that family; a full id must match exactly; `inherit` or no line is
+reported as unspecified. Mismatches are also warned on stderr. The exit
+status stays 0: this reports, it does not gate.
+
 Usage:
     token-report.py SESSION.jsonl [SESSION.jsonl ...]
                     [--since ISO8601] [--until ISO8601] [--format md|log]
+                    [--agents-dir DIR]
 
 Standard library only. Reads transcripts; writes only to stdout. The
 output holds counts, never transcript content.
@@ -31,6 +39,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -47,6 +56,7 @@ WEIGHTS = {
     "output": 5.0,
 }
 FIELDS = ("input", "output", "cacheRead", "cacheCreation5m", "cacheCreation1h")
+MODEL_ALIASES = ("opus", "sonnet", "haiku", "fable")
 
 
 def parse_ts(value):
@@ -155,6 +165,44 @@ def collect(paths, since, until):
     return orchestration, stages, skipped
 
 
+def expected_model(agents_dir, role):
+    """The `model:` value in <agents_dir>/<role>.md's frontmatter, or None."""
+    try:
+        with open(os.path.join(agents_dir, role + ".md"), encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    m = re.match(r"---\n(.*?)\n---", text, re.S)
+    if not m:
+        return None
+    for line in m.group(1).splitlines():
+        key, _, value = line.partition(":")
+        if key.strip() == "model":
+            return value.strip().strip("'\"") or None
+    return None
+
+
+def model_matches(expected, actual):
+    if expected in MODEL_ALIASES:
+        return actual.startswith("claude-%s-" % expected)
+    return actual == expected
+
+
+def check_models(stages, agents_dir):
+    """(stage, expected, result) per stage; result is match|mismatch|unspecified."""
+    results = []
+    for b in stages:
+        expected = expected_model(agents_dir, b.role)
+        if expected is None or expected == "inherit":
+            result = "unspecified"
+        elif all(model_matches(expected, m) for m in b.models):
+            result = "match"
+        else:
+            result = "mismatch"
+        results.append((b, expected or "none", result))
+    return results
+
+
 def total_of(buckets):
     t = Bucket("run", "ORCHESTRATOR")
     for b in buckets:
@@ -170,18 +218,36 @@ def fields_kv(b):
         " requests=%d ieq=%d" % (b.requests, ieq(b.counts))
 
 
-def render_log(orchestration, stages):
-    """One Event Log event per line (design 4.2, event `tokens`)."""
+def run_model_result(checks):
+    results = {r for _, _, r in checks}
+    if "mismatch" in results:
+        return "mismatch"
+    if results <= {"match"} and results:
+        return "match"
+    return "unspecified" if results <= {"unspecified"} else "partial"
+
+
+def render_log(orchestration, stages, checks):
+    """One Event Log event per line (design 4.2, events `tokens` and `model-check`)."""
     lines = []
     for b in stages:
         lines.append("tokens scope=stage stage=%s rev=%d model=%s %s"
                      % (b.role, b.rev, b.model(), fields_kv(b)))
     lines.append("tokens scope=orchestration model=%s %s" % (orchestration.model(), fields_kv(orchestration)))
     lines.append("tokens scope=run stages=%d %s" % (len(stages), fields_kv(total_of(stages + [orchestration]))))
+    for b, expected, result in checks:
+        lines.append("model-check scope=stage stage=%s rev=%d expected=%s actual=%s result=%s"
+                     % (b.role, b.rev, expected, b.model(), result))
+    # The orchestrator has no definition to check against; several models
+    # here means the main session was switched (/model) during the run.
+    lines.append("model-check scope=orchestration models=%s result=%s"
+                 % (orchestration.model(), "switched" if len(orchestration.models) > 1 else "single"))
+    lines.append("model-check scope=run stages=%d mismatches=%d result=%s"
+                 % (len(checks), sum(r == "mismatch" for _, _, r in checks), run_model_result(checks)))
     return "\n".join(lines)
 
 
-def render_md(orchestration, stages):
+def render_md(orchestration, stages, checks):
     head = ["Start (UTC)", "Stage", "rev", "Model", "requests"] + list(FIELDS) + ["ieq"]
     rows = ["| " + " | ".join(head) + " |", "|" + "---|" * 4 + "---:|" * (len(head) - 4)]
 
@@ -194,8 +260,14 @@ def render_md(orchestration, stages):
         row(b.start.strftime("%Y-%m-%d %H:%M:%S") if b.start else "?", b.role, str(b.rev), b)
     row("", "(orchestration)", "", orchestration)
     row("", "**run total**", "", total_of(stages + [orchestration]))
+    checks_rows = ["| Stage | rev | Expected | Actual | Result |", "|---|---:|---|---|---|"]
+    for b, expected, result in checks:
+        checks_rows.append("| %s | %d | %s | %s | %s |" % (b.role, b.rev, expected, b.model(), result))
+    checks_rows.append("| (orchestration) | | | %s | %s |"
+                       % (orchestration.model(), "switched" if len(orchestration.models) > 1 else "single"))
     return "\n".join(rows) + "\n\nieq = input-equivalent tokens; weights: " + \
-        ", ".join("%s x%g" % (f, WEIGHTS[f]) for f in FIELDS)
+        ", ".join("%s x%g" % (f, WEIGHTS[f]) for f in FIELDS) + \
+        "\n\nModel check (expected = `model:` in the role's definition)\n\n" + "\n".join(checks_rows)
 
 
 def main():
@@ -205,9 +277,17 @@ def main():
     ap.add_argument("--until", help="the run's run-end time (ISO 8601)")
     ap.add_argument("--format", choices=("md", "log"), default="md",
                     help="md: table to read; log: lines to paste into the Event Log")
+    ap.add_argument("--agents-dir", default=os.path.join(".claude", "agents"),
+                    help="where the role definitions are, for the model check (default: .claude/agents)")
     args = ap.parse_args()
     orchestration, stages, skipped = collect(args.sessions, parse_ts(args.since), parse_ts(args.until))
-    print(render_md(orchestration, stages) if args.format == "md" else render_log(orchestration, stages))
+    checks = check_models(stages, args.agents_dir)
+    print(render_md(orchestration, stages, checks) if args.format == "md"
+          else render_log(orchestration, stages, checks))
+    for b, expected, result in checks:
+        if result == "mismatch":
+            print("token-report: model mismatch: %s rev=%d expected %s, ran on %s"
+                  % (b.role, b.rev, expected, b.model()), file=sys.stderr)
     if skipped:
         print("token-report: skipped %d unparseable line(s)" % skipped, file=sys.stderr)
 

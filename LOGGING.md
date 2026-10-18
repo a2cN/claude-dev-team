@@ -54,7 +54,12 @@ python3 scripts/claude-dev-team/token-report.py \
 The log format prints one `tokens scope=stage` line per subagent
 invocation (role, rev in invocation order, model, five raw counts, `ieq`),
 one `tokens scope=orchestration` line for the driving session itself, and
-one `tokens scope=run` line for the total. Pass several session files if
+one `tokens scope=run` line for the total. It then prints `model-check`
+lines: each stage's actual model against the `model:` in
+`.claude/agents/<role>.md` (`--agents-dir` to change; an alias such as
+`sonnet` matches any model of that family), whether the orchestrator's own
+session switched models mid-run, and a run-level `result=match|mismatch|
+partial`. A mismatch is also warned on stderr; the exit status stays 0. Pass several session files if
 the run spanned several sessions. Do this at run-end, not later: Claude
 Code deletes session transcripts after 30 days by default
 (`cleanupPeriodDays`), and a run that was not logged by then is gone.

@@ -292,6 +292,46 @@ else
     printf 'FAIL workspace preflight catches a placeholder\n%s\n' "$out" | sed 's/^/       /'
 fi
 
+# A7 (T-15): Event Log times must not go backwards or into the future,
+# unless a later line names the wrong time (a correction).
+a7_case() {
+    # a7_case <name> <want-exit> <want-id-and-level> <event-log-lines>
+    local name="$1" want_exit="$2" want="$3" lines="$4" rc
+    TESTS=$((TESTS + 1))
+    ws="$TMPROOT/ws/a7-$TESTS"
+    mkdir -p "$ws"
+    printf '# Status\n\n## Event Log\n\n%s\n\n## Derived Summary\n\n- 2099-01-01T00:00:00+09:00 — outside the log\n' "$lines" >"$ws/STATUS.md"
+    out=$(bash "$VERIFY" --workspace "$ws" 2>&1)
+    rc=$?
+    if [ "$rc" -eq "$want_exit" ] && printf '%s' "$out" | grep -q "$want"; then
+        printf 'ok   %s\n' "$name"
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL %s (exit %s, want %s)\n%s\n' "$name" "$rc" "$want_exit" "$out" | sed '2,$s/^/       /'
+    fi
+}
+
+if date -d '2026-01-01T00:00:00+09:00' +%s >/dev/null 2>&1; then
+    a7_case "A7 passes times in order (date-only lines and the summary ignored)" 0 'PASS A7 Event Log times are in order' \
+"- 2026-10-16 — HUMAN — workspace created
+- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:05:00+09:00 — ORCHESTRATOR — stage-start stage=developer rev=1"
+    a7_case "A7 catches a time that goes backwards" 1 'FAIL A7' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:20:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1
+- 2026-10-17T10:10:00+09:00 — ORCHESTRATOR — stage-end stage=developer rev=1 outcome=ok"
+    a7_case "A7 accepts a backwards time once a later line corrects it" 0 'PASS A7 Event Log times out of order but acknowledged' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:20:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1
+- 2026-10-17T10:10:00+09:00 — ORCHESTRATOR — stage-end stage=developer rev=1 outcome=ok
+- 2026-10-17T10:11:00+09:00 — ORCHESTRATOR — correction ref=2026-10-17T10:20:00+09:00 — estimated, not from date"
+    a7_case "A7 catches a time in the future" 1 'FAIL A7.*in the future' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2099-01-01T00:00:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1"
+else
+    printf 'skip A7 (date(1) cannot parse ISO 8601)\n'
+fi
+
 # ----------------------------------------------------------- token report
 #
 # Models what token-report.py has to get right (design/measurement.md 5-6):
@@ -322,7 +362,7 @@ if command -v python3 >/dev/null 2>&1; then
         >"$sess/subagents/agent-b.jsonl"
     printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-a.meta.json"
     printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-b.meta.json"
-    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format log 2>&1)
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format log 2>&1 | grep '^tokens ')
     stage='model=m input=1 output=10 cacheRead=100 cacheCreation5m=1000 cacheCreation1h=0 requests=1 ieq=1311'
     want="tokens scope=stage stage=developer rev=1 $stage
 tokens scope=stage stage=developer rev=2 $stage
@@ -342,6 +382,50 @@ tokens scope=run stages=2 input=3 output=30 cacheRead=300 cacheCreation5m=2000 c
     else
         FAILURES=$((FAILURES + 1))
         printf 'FAIL token report honours --since\n       got:\n%s\n' "$out"
+    fi
+
+    # T-14: each stage's model against its definition's `model:`. The
+    # fixture's model is a real-looking id so the alias rule is exercised:
+    # `sonnet` must match claude-sonnet-*, and must not match claude-opus-*.
+    TESTS=$((TESTS + 1))
+    msess="$TMPROOT/tok/s2"
+    agents="$TMPROOT/tok/agents"
+    mkdir -p "$msess/subagents" "$agents"
+    printf '{"requestId":"m1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"claude-opus-9-9",%s}}\n' "$u1h" >"$msess.jsonl"
+    printf '{"requestId":"m2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-a.jsonl"
+    printf '{"requestId":"m3","timestamp":"2026-10-01T00:02:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-b.jsonl"
+    printf '{"requestId":"m4","timestamp":"2026-10-01T00:03:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-c.jsonl"
+    printf '{"agentType":"developer"}\n' >"$msess/subagents/agent-a.meta.json"
+    printf '{"agentType":"quality-assurance"}\n' >"$msess/subagents/agent-b.meta.json"
+    printf '{"agentType":"designer"}\n' >"$msess/subagents/agent-c.meta.json"
+    printf -- '---\nname: developer\nmodel: sonnet\n---\n' >"$agents/developer.md"
+    printf -- '---\nname: quality-assurance\nmodel: opus\n---\n' >"$agents/quality-assurance.md"
+    printf -- '---\nname: designer\nmodel: inherit\n---\n' >"$agents/designer.md"
+    out=$(python3 -I "$TOKREPORT" "$msess.jsonl" --format log --agents-dir "$agents" 2>"$TMPROOT/tok/err" | grep '^model-check ')
+    want="model-check scope=stage stage=developer rev=1 expected=sonnet actual=claude-sonnet-9-9 result=match
+model-check scope=stage stage=quality-assurance rev=1 expected=opus actual=claude-sonnet-9-9 result=mismatch
+model-check scope=stage stage=designer rev=1 expected=inherit actual=claude-sonnet-9-9 result=unspecified
+model-check scope=orchestration models=claude-opus-9-9 result=single
+model-check scope=run stages=3 mismatches=1 result=mismatch"
+    if [ "$out" = "$want" ] && grep -q 'model mismatch: quality-assurance rev=1' "$TMPROOT/tok/err"; then
+        printf 'ok   token report: model check against each definition, mismatch warned\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report: model check against each definition, mismatch warned\n       got:\n%s\n       want:\n%s\n' "$out" "$want"
+    fi
+
+    # A model switched mid-session shows up on the orchestration line.
+    TESTS=$((TESTS + 1))
+    printf '{"requestId":"m5","timestamp":"2026-10-01T00:04:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u1h" >>"$msess.jsonl"
+    out=$(python3 -I "$TOKREPORT" "$msess.jsonl" --format log --agents-dir "$agents" 2>/dev/null)
+    if printf '%s' "$out" | grep -q '^model-check scope=orchestration models=.*+.* result=switched$'; then
+        printf 'ok   token report: a mid-run model switch in the main session is reported\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report: a mid-run model switch in the main session is reported\n       got:\n%s\n' "$out"
     fi
 else
     printf 'skip token report (python3 not installed)\n'

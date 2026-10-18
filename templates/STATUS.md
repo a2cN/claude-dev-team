@@ -67,6 +67,9 @@
   <YYYY-MM-DD>; the line order still gives the sequence, and the times the
   run window is cut on (run-start, run-end) come from the ORCHESTRATOR.
   Values contain no spaces; free text goes after the last " — ".
+  `verify-dev-team.sh --workspace` (A7) fails when a time goes backwards
+  or into the future. Fix it by appending a `correction ref=<the wrong
+  time>` line, never by editing the line.
   A line with no recognised <event> is still allowed — it is read by
   humans and ignored by counting.
 
@@ -79,6 +82,7 @@
     escalate    any           trigger=od|rework-cap|token-budget|contradiction|protected-path|no-mock ref=<id>
     human-fix   HUMAN         what=code|doc|config
     tokens      ORCHESTRATOR  pasted from token-report.py (below)
+    model-check ORCHESTRATOR  pasted from token-report.py (below) — result=match|mismatch|unspecified per stage
     run-end     ORCHESTRATOR  run=<task-slug>-<n> outcome=done|abandoned
     correction  any           ref=<time of the line being corrected>
 
@@ -101,9 +105,11 @@
   runs, over the run's session transcripts (see LOGGING.md):
     python3 scripts/claude-dev-team/token-report.py <session>.jsonl \
         --since <run-start time> --until <run-end time> --format log
-  and appends each output line as its own `tokens` entry. That gives one
-  line per stage (one per subagent invocation), one for the orchestrator
-  itself, and one for the whole run. Required: session transcripts are
+  and appends each output line as its own `tokens` / `model-check` entry.
+  That gives one line per stage (one per subagent invocation), one for the
+  orchestrator itself, and one for the whole run, then the same three
+  scopes again comparing each stage's model with its definition's
+  `model:`. Required: session transcripts are
   deleted by Claude Code after 30 days by default, and a run whose tokens
   were not logged by then cannot be measured at all.
   Counts only — never transcript content.
