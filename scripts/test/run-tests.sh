@@ -292,6 +292,145 @@ else
     printf 'FAIL workspace preflight catches a placeholder\n%s\n' "$out" | sed 's/^/       /'
 fi
 
+# A7 (T-15): Event Log times must not go backwards or into the future,
+# unless a later line names the wrong time (a correction).
+a7_case() {
+    # a7_case <name> <want-exit> <want-id-and-level> <event-log-lines>
+    local name="$1" want_exit="$2" want="$3" lines="$4" rc
+    TESTS=$((TESTS + 1))
+    ws="$TMPROOT/ws/a7-$TESTS"
+    mkdir -p "$ws"
+    printf '# Status\n\n## Event Log\n\n%s\n\n## Derived Summary\n\n- 2099-01-01T00:00:00+09:00 — outside the log\n' "$lines" >"$ws/STATUS.md"
+    out=$(bash "$VERIFY" --workspace "$ws" 2>&1)
+    rc=$?
+    if [ "$rc" -eq "$want_exit" ] && printf '%s' "$out" | grep -q "$want"; then
+        printf 'ok   %s\n' "$name"
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL %s (exit %s, want %s)\n%s\n' "$name" "$rc" "$want_exit" "$out" | sed '2,$s/^/       /'
+    fi
+}
+
+if date -d '2026-01-01T00:00:00+09:00' +%s >/dev/null 2>&1; then
+    a7_case "A7 passes times in order (date-only lines and the summary ignored)" 0 'PASS A7 Event Log times are in order' \
+"- 2026-10-16 — HUMAN — workspace created
+- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:05:00+09:00 — ORCHESTRATOR — stage-start stage=developer rev=1"
+    a7_case "A7 catches a time that goes backwards" 1 'FAIL A7' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:20:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1
+- 2026-10-17T10:10:00+09:00 — ORCHESTRATOR — stage-end stage=developer rev=1 outcome=ok"
+    a7_case "A7 accepts a backwards time once a later line corrects it" 0 'PASS A7 Event Log times out of order but acknowledged' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2026-10-17T10:20:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1
+- 2026-10-17T10:10:00+09:00 — ORCHESTRATOR — stage-end stage=developer rev=1 outcome=ok
+- 2026-10-17T10:11:00+09:00 — ORCHESTRATOR — correction ref=2026-10-17T10:20:00+09:00 — estimated, not from date"
+    a7_case "A7 catches a time in the future" 1 'FAIL A7.*in the future' \
+"- 2026-10-17T10:00:00+09:00 — ORCHESTRATOR — run-start run=demo-1
+- 2099-01-01T00:00:00+09:00 — DEVELOPER — artifact-written file=50_implementation.md rev=1"
+else
+    printf 'skip A7 (date(1) cannot parse ISO 8601)\n'
+fi
+
+# ----------------------------------------------------------- token report
+#
+# Models what token-report.py has to get right (design/measurement.md 5-6):
+#  - one API response split across several records, each repeating the
+#    same usage, is counted once;
+#  - each subagent file is one stage, named by its meta.json, and rev is
+#    the order of invocation, not the order of file names;
+#  - cache writes are split by TTL and weighted into ieq.
+# Expected ieq: stage = 1 + 10*5 + 100*0.1 + 1000*1.25 = 1311;
+#               orchestration (1h cache) = 1 + 50 + 10 + 1000*2 = 2061.
+
+TOKREPORT="$HERE/../token-report.py"
+if command -v python3 >/dev/null 2>&1; then
+    TESTS=$((TESTS + 1))
+    sess="$TMPROOT/tok/s1"
+    mkdir -p "$sess/subagents"
+    u1h='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000,"cache_creation":{"ephemeral_1h_input_tokens":1000,"ephemeral_5m_input_tokens":0}}'
+    u5m='"usage":{"input_tokens":1,"output_tokens":10,"cache_read_input_tokens":100,"cache_creation_input_tokens":1000}'
+    {
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u1h"
+        printf '{"requestId":"r1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"m",%s}}\n' "$u1h"
+        printf '{"type":"user","message":{"content":"no usage here"}}\n'
+    } >"$sess.jsonl"
+    # agent-a sorts first by name but was invoked second.
+    printf '{"requestId":"r3","timestamp":"2026-10-01T00:02:00Z","message":{"model":"m",%s}}\n' "$u5m" \
+        >"$sess/subagents/agent-a.jsonl"
+    printf '{"requestId":"r2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"m",%s}}\n' "$u5m" \
+        >"$sess/subagents/agent-b.jsonl"
+    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-a.meta.json"
+    printf '{"agentType":"developer"}\n' >"$sess/subagents/agent-b.meta.json"
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --format log 2>&1 | grep '^tokens ')
+    stage='model=m input=1 output=10 cacheRead=100 cacheCreation5m=1000 cacheCreation1h=0 requests=1 ieq=1311'
+    want="tokens scope=stage stage=developer rev=1 $stage
+tokens scope=stage stage=developer rev=2 $stage
+tokens scope=orchestration model=m input=1 output=10 cacheRead=100 cacheCreation5m=0 cacheCreation1h=1000 requests=1 ieq=2061
+tokens scope=run stages=2 input=3 output=30 cacheRead=300 cacheCreation5m=2000 cacheCreation1h=1000 requests=3 ieq=4683"
+    if [ "$out" = "$want" ]; then
+        printf 'ok   token report: one count per response, one stage per subagent, weighted ieq\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report: one count per response, one stage per subagent, weighted ieq\n       got:\n%s\n       want:\n%s\n' "$out" "$want"
+    fi
+
+    TESTS=$((TESTS + 1))
+    out=$(python3 -I "$TOKREPORT" "$sess.jsonl" --since 2026-10-01T00:01:30Z --format log 2>&1)
+    if printf '%s' "$out" | grep -q '^tokens scope=run stages=1 .* requests=1 ieq=1311$'; then
+        printf 'ok   token report honours --since\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report honours --since\n       got:\n%s\n' "$out"
+    fi
+
+    # T-14: each stage's model against its definition's `model:`. The
+    # fixture's model is a real-looking id so the alias rule is exercised:
+    # `sonnet` must match claude-sonnet-*, and must not match claude-opus-*.
+    TESTS=$((TESTS + 1))
+    msess="$TMPROOT/tok/s2"
+    agents="$TMPROOT/tok/agents"
+    mkdir -p "$msess/subagents" "$agents"
+    printf '{"requestId":"m1","timestamp":"2026-10-01T00:00:00Z","message":{"model":"claude-opus-9-9",%s}}\n' "$u1h" >"$msess.jsonl"
+    printf '{"requestId":"m2","timestamp":"2026-10-01T00:01:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-a.jsonl"
+    printf '{"requestId":"m3","timestamp":"2026-10-01T00:02:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-b.jsonl"
+    printf '{"requestId":"m4","timestamp":"2026-10-01T00:03:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u5m" \
+        >"$msess/subagents/agent-c.jsonl"
+    printf '{"agentType":"developer"}\n' >"$msess/subagents/agent-a.meta.json"
+    printf '{"agentType":"quality-assurance"}\n' >"$msess/subagents/agent-b.meta.json"
+    printf '{"agentType":"designer"}\n' >"$msess/subagents/agent-c.meta.json"
+    printf -- '---\nname: developer\nmodel: sonnet\n---\n' >"$agents/developer.md"
+    printf -- '---\nname: quality-assurance\nmodel: opus\n---\n' >"$agents/quality-assurance.md"
+    printf -- '---\nname: designer\nmodel: inherit\n---\n' >"$agents/designer.md"
+    out=$(python3 -I "$TOKREPORT" "$msess.jsonl" --format log --agents-dir "$agents" 2>"$TMPROOT/tok/err" | grep '^model-check ')
+    want="model-check scope=stage stage=developer rev=1 expected=sonnet actual=claude-sonnet-9-9 result=match
+model-check scope=stage stage=quality-assurance rev=1 expected=opus actual=claude-sonnet-9-9 result=mismatch
+model-check scope=stage stage=designer rev=1 expected=inherit actual=claude-sonnet-9-9 result=unspecified
+model-check scope=orchestration models=claude-opus-9-9 result=single
+model-check scope=run stages=3 mismatches=1 result=mismatch"
+    if [ "$out" = "$want" ] && grep -q 'model mismatch: quality-assurance rev=1' "$TMPROOT/tok/err"; then
+        printf 'ok   token report: model check against each definition, mismatch warned\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report: model check against each definition, mismatch warned\n       got:\n%s\n       want:\n%s\n' "$out" "$want"
+    fi
+
+    # A model switched mid-session shows up on the orchestration line.
+    TESTS=$((TESTS + 1))
+    printf '{"requestId":"m5","timestamp":"2026-10-01T00:04:00Z","message":{"model":"claude-sonnet-9-9",%s}}\n' "$u1h" >>"$msess.jsonl"
+    out=$(python3 -I "$TOKREPORT" "$msess.jsonl" --format log --agents-dir "$agents" 2>/dev/null)
+    if printf '%s' "$out" | grep -q '^model-check scope=orchestration models=.*+.* result=switched$'; then
+        printf 'ok   token report: a mid-run model switch in the main session is reported\n'
+    else
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL token report: a mid-run model switch in the main session is reported\n       got:\n%s\n' "$out"
+    fi
+else
+    printf 'skip token report (python3 not installed)\n'
+fi
+
 # --------------------------------------------------------- static checks
 
 TESTS=$((TESTS + 1))
@@ -345,6 +484,23 @@ assert_docs "no live doc still claims there is no 70 in the main line" 1 \
 assert_docs "the design approval artifact is documented" 0 "45_design_approval.md"
 assert_docs "the mock build artifact is documented" 0 "44_mock_build.md"
 assert_docs "the ledger is documented" 0 "docs/OPEN-DECISIONS.md"
+assert_docs "the token report is documented" 0 "token-report.py"
+
+# The failure-tag vocabulary is defined in the QA agent and summed in the
+# STATUS template; a tag renamed in one place and not the other would make
+# the counts silently stop adding up.
+TESTS=$((TESTS + 1))
+missing=""
+for tag in spec misalignment verification impl-bug; do
+    grep -qF "\`$tag\`" "$REPO_ROOT/agents/quality-assurance.md" || missing="$missing qa:$tag"
+    grep -qF "$tag=" "$REPO_ROOT/templates/STATUS.md" || missing="$missing status:$tag"
+done
+if [ -z "$missing" ]; then
+    printf 'ok   failure tags agree between the QA agent and the STATUS template\n'
+else
+    FAILURES=$((FAILURES + 1))
+    printf 'FAIL failure tags agree between the QA agent and the STATUS template (missing:%s)\n' "$missing"
+fi
 
 TESTS=$((TESTS + 1))
 hooked=$(grep -l 'block-git-write.sh' "$REPO_ROOT"/agents/*.md | wc -l | tr -d ' ')

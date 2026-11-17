@@ -574,6 +574,7 @@ What it checks, in three groups:
 | `A0`–`A6` | Was the run archived at all, is every required artifact in it, was every gate signed before the snapshot was taken, and has nothing in `docs/archive/` been modified since? |
 | `B1`–`B3` | Did promotion actually run, do the promoted destinations exist, and does every design canon carry the `README.md` that makes it canon rather than a proposal? |
 | `C1`–`C4` | Does every cited `OD-` id resolve to a ledger row, are the ids unique, and has no row been deleted? |
+| `A7` (`--workspace` only) | Do the live Event Log's times run forward, with none in the future — or has a later line corrected the one that doesn't? |
 
 Two of these are worth calling out because nothing enforced them before.
 `A3` greps the archive for `PENDING_HUMAN_APPROVAL`, which is the
